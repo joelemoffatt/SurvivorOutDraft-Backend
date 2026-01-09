@@ -1,5 +1,70 @@
 ### GET request to example server
 GET http://localhost:8080/
 
-###
+### GET all castaways
 GET http://localhost:8080/api/v1/castaways
+
+### GET castaway by id
+GET http://localhost:8080/api/v1/castaways/2
+
+### POST add Savannah
+POST http://localhost:8080/api/v1/castaways
+Content-Type: application/json
+
+{
+  "id": 1,
+  "name": "Savannah Louie",
+  "seasonNumber": 49,
+  "finalPlacement": 1,
+  "ageAtPlay": 31,
+  "currentAge": 32,
+  "birthDate": "1993-11-16",
+  "occupation": "Former Reporter",
+  "hometown": "Atlanta, Georgia",
+  "gender": "Female",
+  "ethnicity": null,
+  "lgbt": false,
+  "description": "Adventurous, No-Nonsense, Curious",
+  "personalityType": null,
+  "seasonsPlayed": 1,
+  "wins": 1,
+  "overallScorePercent": 82,
+  "overallRank": 1,
+  "challengesScorePercent": 87,
+  "advantagesScorePercent": 33,
+  "influenceScorePercent": 83,
+  "tribalCouncilScorePercent": 54,
+  "outlastScorePercent": 100,
+  "juryScorePercent": 62
+}
+
+### POST add Sophi
+POST http://localhost:8080/api/v1/castaways
+Content-Type: application/json
+
+{
+  "id": 2,
+  "name": "Sophi Balerdi",
+  "seasonNumber": 49,
+  "finalPlacement": 2,
+  "ageAtPlay": 27,
+  "currentAge": 27,
+  "birthDate": "1998-02-08",
+  "occupation": "Entrepreneur",
+  "hometown": "Miami, Florida",
+  "gender": "Female",
+  "ethnicity": null,
+  "lgbt": false,
+  "description": "Spicy, Thoughtful, Relentless",
+  "personalityType": null,
+  "seasonsPlayed": 1,
+  "wins": 0,
+  "overallScorePercent": 64,
+  "overallRank": 2,
+  "challengesScorePercent": 26,
+  "advantagesScorePercent": 32,
+  "influenceScorePercent": 65,
+  "tribalCouncilScorePercent": 79,
+  "outlastScorePercent": 100,
+  "juryScorePercent": 25
+}

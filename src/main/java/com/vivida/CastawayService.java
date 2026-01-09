@@ -1,6 +1,8 @@
 package com.vivida;
 
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.util.List;
 
@@ -17,5 +19,23 @@ public class CastawayService {
     // This case all castaways are public
     public List<Castaway> getAllCastaways() {
         return castawayRepository.findAll();
+    }
+
+    public Castaway getCastawayById(int id) {
+        return castawayRepository.findById(id).orElseThrow(() -> new ResponseStatusException(
+                HttpStatus.NOT_FOUND, "Castaway not found with id " + id
+        ));
+    }
+
+    public void insertCastaway(Castaway castaway) {
+        castawayRepository.save(castaway);
+    }
+
+    public void updateCastaway(Castaway castaway) {
+        castawayRepository.save(castaway);
+    }
+
+    public void  deleteCastawayById(int id) {
+        castawayRepository.deleteById(id);
     }
 }
