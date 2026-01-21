@@ -1,0 +1,30 @@
+package com.vivida;
+
+import jakarta.persistence.*;
+import lombok.AllArgsConstructor;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.Setter;
+
+@Entity
+@Setter
+@Getter
+@AllArgsConstructor
+@NoArgsConstructor
+public class ChallengePerformance {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Integer id;
+
+    @ManyToOne
+    @JoinColumn(name = "challenge_id")
+    private Challenge challenge;
+
+    @ManyToOne
+    @JoinColumn(name = "castaway_performance_id")
+    private CastawayPerformance castaway;
+    private Integer place;
+    private Boolean last;
+    private Boolean satOut;
+}
