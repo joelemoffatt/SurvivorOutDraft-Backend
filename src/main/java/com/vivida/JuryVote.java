@@ -22,10 +22,10 @@ public class JuryVote {
     private Episode episode;
 
     @ManyToOne
-    @JoinColumn(name = "castaway_id")
+    @JoinColumn(name = "castaway_id", nullable = false)
     private CastawayPerformance castaway;
 
     @ManyToOne
-    @JoinColumn(name = "voted_for_id")
+    @JoinColumn(name = "voted_for_id", nullable = false)
     private CastawayPerformance votedFor;
 }

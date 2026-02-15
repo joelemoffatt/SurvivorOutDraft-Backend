@@ -20,10 +20,12 @@ public class VoteRound {
     private Integer id;
 
     @ManyToOne
-    @JoinColumn(name = "tribal_id")
+    @JoinColumn(name = "tribal_id", nullable = false)
     private Tribal tribal;
 
     @OneToMany(mappedBy = "voteRound", cascade = CascadeType.ALL)
     private List<Vote> votes;
+    
+    @Column(nullable = false)
     private Boolean isTie;
 }

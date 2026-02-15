@@ -23,7 +23,7 @@ public class Castaway {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Integer id;
     
-    @Column(unique = true)
+    @Column(nullable = false, unique = true)
     private String json_id;  // Original JSON ID like "US0001"
     
     @Column(nullable = false)

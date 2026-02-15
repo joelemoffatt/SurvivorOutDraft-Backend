@@ -39,19 +39,10 @@ public class Challenge {
     @Column(nullable = false)
     private String name;
 
-    @Column(nullable = true)
     private Boolean balance;
-
-    @Column(nullable = true)
     private Boolean endurance;
-
-    @Column(nullable = true)
     private Boolean puzzle;
-
-    @Column(nullable = true)
     private Boolean precision;
-
-    @Column(nullable = true)
     private Boolean water;
 
     @OneToMany(mappedBy = "challenge", cascade = CascadeType.ALL)

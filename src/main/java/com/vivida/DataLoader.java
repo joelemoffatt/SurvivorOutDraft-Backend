@@ -36,8 +36,6 @@ public class DataLoader implements CommandLineRunner {
     private ObjectMapper mapper = new ObjectMapper();
     private static final String DATA_PATH = "/Users/joelmoffatt/VSCode/SurvivorOutDraft/survivoR/data/class-entities/";
     private static final int BATCH_SIZE = 100;
-    private static final int TEST_LIMIT = 2; // Limit to 2 records per table for testing
-    private static final boolean TEST_MODE = true; // Set to false for full load
     
     private Map<String, Castaway> castawayCache = new HashMap<>();
     private Map<Integer, Season> seasonCache = new HashMap<>();
@@ -45,21 +43,12 @@ public class DataLoader implements CommandLineRunner {
     private Map<Integer, Episode> episodeCache = new HashMap<>();
 
     private List<Map<String, Object>> loadJsonFile(String filename) throws Exception {
-        return loadJsonFile(filename, TEST_MODE ? TEST_LIMIT : Integer.MAX_VALUE);
-    }
-
-    private List<Map<String, Object>> loadJsonFile(String filename, int limit) throws Exception {
         File file = new File(DATA_PATH + filename);
         if (!file.exists()) {
             System.out.println("⚠  " + filename + " not found");
             return new ArrayList<>();
         }
         List<Map<String, Object>> data = mapper.readValue(file, mapper.getTypeFactory().constructCollectionType(List.class, Map.class));
-        
-        if (TEST_MODE && data.size() > limit) {
-            System.out.println("TEST MODE: Limiting " + filename + " to " + limit + " records (of " + data.size() + " total)");
-            return data.subList(0, limit);
-        }
         return data;
     }
 
@@ -67,46 +56,18 @@ public class DataLoader implements CommandLineRunner {
     @Transactional
     public void run(String... args) throws Exception {
         System.out.println("\n" + "=".repeat(80));
-        System.out.println("LOADING SURVIVOR DATA INTO DATABASE (OPTIMIZED)");
+        System.out.println("LOADING SURVIVOR DATA INTO DATABASE");
         System.out.println("=".repeat(80) + "\n");
 
         long totalStart = System.currentTimeMillis();
         try {
-            // Populate caches from database
-            seasonRepository.findAll().forEach(s -> seasonCache.put(s.getSeason(), s));
-            castawayRepository.findAll().forEach(c -> castawayCache.put(c.getJson_id(), c));
+            clearAllData();
             
-            // Load in strict dependency order for FK validation
-            if (seasonRepository.count() != 50) {
-                loadSeasons();
-            } else {
-                System.out.println("Seasons already loaded, skipping...");
-            }
-            
-            if (castawayRepository.count() != 751) {
-                loadCastaways();
-            } else {
-                System.out.println("Castaways already loaded, skipping...");
-            }
-            
-            if (castawayPerformanceRepository.count() != 917) {
-                loadCastawayPerformances();
-            } else {
-                System.out.println("Castaway Performances already loaded, skipping...");
-            }
-            
-            if (tribeRepository.count() != 188) {
-                loadTribes();
-            } else {
-                System.out.println("Tribes already loaded, skipping...");
-            }
-            
-            if (episodeRepository.count() != 620) {
-                loadEpisodes();
-            } else {
-                System.out.println("Episodes already loaded, skipping...");
-            }
-            
+            loadSeasons();
+            loadCastaways();
+            loadCastawayPerformances();
+            loadTribes();
+            loadEpisodes();
             loadChallenges();
             loadTribal();
             loadTribeMapping();
@@ -118,6 +79,10 @@ public class DataLoader implements CommandLineRunner {
             loadBoots();
             loadAdvantageMovements();
             
+            // Rebuild caches after full load
+            seasonRepository.findAll().forEach(s -> seasonCache.put(s.getSeason(), s));
+            castawayRepository.findAll().forEach(c -> castawayCache.put(c.getJson_id(), c));
+            
             System.out.println("\n" + "=".repeat(80));
             long totalTime = (System.currentTimeMillis() - totalStart) / 1000;
             System.out.println("✓ DATA LOAD COMPLETE in " + totalTime + " seconds");
@@ -127,6 +92,27 @@ public class DataLoader implements CommandLineRunner {
             e.printStackTrace();
             throw e;
         }
+    }
+    
+    private void clearAllData() {
+        System.out.println("Clearing all existing data...");
+        advantageMovementRepository.deleteAll();
+        bootRepository.deleteAll();
+        journeyRepository.deleteAll();
+        juryVoteRepository.deleteAll();
+        voteRepository.deleteAll();
+        voteRoundRepository.deleteAll();
+        tribeMappingRepository.deleteAll();
+        challengePerformanceRepository.deleteAll();
+        challengeRepository.deleteAll();
+        tribalRepository.deleteAll();
+        castawayPerformanceRepository.deleteAll();
+        episodeRepository.deleteAll();
+        tribeRepository.deleteAll();
+        castawayRepository.deleteAll();
+        seasonRepository.deleteAll();
+        entityManager.flush();
+        System.out.println("✓ All data cleared\n");
     }
     
     private <T> void saveInBatches(List<T> entities, String entityName) {
@@ -243,11 +229,6 @@ public class DataLoader implements CommandLineRunner {
     }
 
     private void loadEpisodes() throws Exception {
-        if (episodeRepository.count() > 0) {
-            System.out.println("Episodes already loaded (" + episodeRepository.count() + "), skipping...");
-            return;
-        }
-
         List<Map<String, Object>> data = loadJsonFile("episode.json");
         if (data.isEmpty()) return;
 
@@ -255,7 +236,7 @@ public class DataLoader implements CommandLineRunner {
         List<Episode> episodes = new ArrayList<>();
         for (Map<String, Object> item : data) {
             Integer seasonNum = getInt(item, "season");
-            Integer episodeNum = getInt(item, "episodeNumber");
+            Integer episodeNum = getInt(item, "episode_number");
             Season season = seasonCache.get(seasonNum);
             
             if (season == null) {
@@ -322,11 +303,6 @@ public class DataLoader implements CommandLineRunner {
     }
 
     private void loadTribal() throws Exception {
-        if (tribalRepository.count() > 0) {
-            System.out.println("Tribal Councils already loaded (" + tribalRepository.count() + "), skipping...");
-            return;
-        }
-
         List<Map<String, Object>> data = loadJsonFile("tribal.json");
         if (data.isEmpty()) return;
 
@@ -362,11 +338,6 @@ public class DataLoader implements CommandLineRunner {
     }
 
     private void loadChallengePerformances() throws Exception {
-        if (challengePerformanceRepository.count() > 0) {
-            System.out.println("Challenge Performances already loaded (" + challengePerformanceRepository.count() + "), skipping...");
-            return;
-        }
-
         List<Map<String, Object>> data = loadJsonFile("challengePerformance.json");
         if (data.isEmpty()) return;
 
@@ -411,11 +382,6 @@ public class DataLoader implements CommandLineRunner {
     }
 
     private void loadTribeMapping() throws Exception {
-        if (tribeMappingRepository.count() > 0) {
-            System.out.println("Tribe Mappings already loaded (" + tribeMappingRepository.count() + "), skipping...");
-            return;
-        }
-
         List<Map<String, Object>> data = loadJsonFile("tribeMapping.json");
         if (data.isEmpty()) return;
 
@@ -467,11 +433,6 @@ public class DataLoader implements CommandLineRunner {
     }
 
     private void loadVoteRounds() throws Exception {
-        if (voteRoundRepository.count() > 0) {
-            System.out.println("Vote Rounds already loaded (" + voteRoundRepository.count() + "), skipping...");
-            return;
-        }
-
         List<Map<String, Object>> data = loadJsonFile("voteRound.json");
         if (data.isEmpty()) return;
 
@@ -506,11 +467,6 @@ public class DataLoader implements CommandLineRunner {
     }
 
     private void loadVotes() throws Exception {
-        if (voteRepository.count() > 0) {
-            System.out.println("Votes already loaded (" + voteRepository.count() + "), skipping...");
-            return;
-        }
-
         List<Map<String, Object>> data = loadJsonFile("vote.json");
         if (data.isEmpty()) return;
 
@@ -557,11 +513,6 @@ public class DataLoader implements CommandLineRunner {
     }
 
     private void loadJuryVotes() throws Exception {
-        if (juryVoteRepository.count() > 0) {
-            System.out.println("Jury Votes already loaded (" + juryVoteRepository.count() + "), skipping...");
-            return;
-        }
-
         List<Map<String, Object>> data = loadJsonFile("juryVote.json");
         if (data.isEmpty()) return;
 
@@ -605,11 +556,6 @@ public class DataLoader implements CommandLineRunner {
     }
 
     private void loadJourneys() throws Exception {
-        if (journeyRepository.count() > 0) {
-            System.out.println("Journeys already loaded (" + journeyRepository.count() + "), skipping...");
-            return;
-        }
-
         List<Map<String, Object>> data = loadJsonFile("journey.json");
         if (data.isEmpty()) return;
 
@@ -652,11 +598,6 @@ public class DataLoader implements CommandLineRunner {
     }
 
     private void loadBoots() throws Exception {
-        if (bootRepository.count() > 0) {
-            System.out.println("Boots already loaded (" + bootRepository.count() + "), skipping...");
-            return;
-        }
-
         List<Map<String, Object>> data = loadJsonFile("boot.json");
         if (data.isEmpty()) return;
 
@@ -675,12 +616,10 @@ public class DataLoader implements CommandLineRunner {
 
             Castaway castaway = castawayCache.getOrDefault(castawayId, null);
             CastawayPerformance castawayPerf = null;
-            if (castaway != null) {
-                for (CastawayPerformance cp : castawayPerformanceRepository.findAll()) {
-                    if (cp.getCastaway().equals(castaway) && cp.getSeason().equals(season)) {
-                        castawayPerf = cp;
-                        break;
-                    }
+            for (CastawayPerformance cp : castawayPerformanceRepository.findAll()) {
+                if (cp.getCastaway().equals(castaway) && cp.getSeason().equals(season)) {
+                    castawayPerf = cp;
+                    break;
                 }
             }
             
@@ -696,18 +635,13 @@ public class DataLoader implements CommandLineRunner {
     }
 
     private void loadAdvantageMovements() throws Exception {
-        if (advantageMovementRepository.count() > 0) {
-            System.out.println("Advantage Movements already loaded (" + advantageMovementRepository.count() + "), skipping...");
-            return;
-        }
-
         List<Map<String, Object>> data = loadJsonFile("advantageMovement.json");
         if (data.isEmpty()) return;
 
         System.out.println("Loading Advantage Movements...");
         List<AdvantageMovement> movements = new ArrayList<>();
         for (Map<String, Object> item : data) {
-            String castawayId = getString(item, "castaway");
+            String castawayId = getString(item, "castaway_id");
             String playedForId = getString(item, "played_for_id");
             Integer seasonNum = getInt(item, "season");
             Integer episodeNum = getInt(item, "episode");

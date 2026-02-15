@@ -18,15 +18,15 @@ public class Vote {
     private Integer id;
 
     @ManyToOne
-    @JoinColumn(name = "vote_round_id")
+    @JoinColumn(name = "vote_round_id", nullable = false)
     private VoteRound voteRound;
 
     @ManyToOne
-    @JoinColumn(name = "castaway_id")
+    @JoinColumn(name = "castaway_id", nullable = false)
     private CastawayPerformance castaway;
 
     @ManyToOne
-    @JoinColumn(name = "voted_for_id")
+    @JoinColumn(name = "voted_for_id", nullable = false)
     private CastawayPerformance votedFor;
     private Boolean nullified;
 }

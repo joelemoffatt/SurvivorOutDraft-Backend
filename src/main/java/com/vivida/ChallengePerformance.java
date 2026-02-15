@@ -18,11 +18,11 @@ public class ChallengePerformance {
     private Integer id;
 
     @ManyToOne
-    @JoinColumn(name = "challenge_id")
+    @JoinColumn(name = "challenge_id", nullable = false)
     private Challenge challenge;
     
     @ManyToOne
-    @JoinColumn(name = "castaway_performance_id")
+    @JoinColumn(name = "castaway_performance_id", nullable = false)
     private CastawayPerformance castaway;
 
     private Integer place; // Null should be shown last I do not know why it is null sometimes
