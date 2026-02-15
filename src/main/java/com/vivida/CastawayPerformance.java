@@ -1,6 +1,7 @@
 package com.vivida;
 
 import jakarta.persistence.*;
+import jakarta.validation.constraints.NotBlank;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -18,24 +19,10 @@ public class CastawayPerformance {
     private Integer id;
 
     @ManyToOne
-    @JoinColumn(name = "season_id")
+    @JoinColumn(name = "season_id", nullable = false)
     private Season season;
 
     @ManyToOne
-    @JoinColumn(name = "castaway_id")
+    @JoinColumn(name = "castaway_id", nullable = false)
     private Castaway castaway;
-
-    @ManyToOne
-    @JoinColumn(name = "original_tribe_id")
-    private Tribe originalTribe;
-
-    private String order;
-    private String place;
-
-    private Boolean jury;
-    private Boolean finalist;
-    private Boolean winner;
-    private Boolean voted_out;
-    private Boolean medically_evacuated;
-    private Boolean quit;
 }

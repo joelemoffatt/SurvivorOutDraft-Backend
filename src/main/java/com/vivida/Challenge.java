@@ -20,17 +20,39 @@ public class Challenge {
     private Integer id;
 
     @ManyToOne
-    @JoinColumn(name = "episode_id")
-    private Episode episode;
+    @JoinColumn(name = "season_id")
+    private Season season;
 
     @ManyToOne
-    @JoinColumn(name = "finale_id")
-    private Finale finale;
+    @JoinColumn(name = "episode_id", nullable = false)
+    private Episode episode;
 
-    private Integer challengeNumber;
-    private String challengeType;
+    @Column(nullable = false)
+    private Integer challenge_id;
+
+    @Column(nullable = false)
+    private Integer challenge_number;
+
+    @Column(nullable = false)
+    private String challenge_type; // "Tribal Immunity", "Individual Reward", etc.
+
+    @Column(nullable = false)
     private String name;
-    private String reward;
+
+    @Column(nullable = true)
+    private Boolean balance;
+
+    @Column(nullable = true)
+    private Boolean endurance;
+
+    @Column(nullable = true)
+    private Boolean puzzle;
+
+    @Column(nullable = true)
+    private Boolean precision;
+
+    @Column(nullable = true)
+    private Boolean water;
 
     @OneToMany(mappedBy = "challenge", cascade = CascadeType.ALL)
     private List<ChallengePerformance> challengesPerformances;

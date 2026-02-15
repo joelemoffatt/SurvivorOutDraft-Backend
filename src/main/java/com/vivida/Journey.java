@@ -18,12 +18,8 @@ public class Journey {
     private Integer id;
 
     @ManyToOne
-    @JoinColumn(name = "episode_id")
+    @JoinColumn(name = "episode_id", nullable = false)
     private Episode episode;
-
-    @ManyToOne
-    @JoinColumn(name = "finale_id")
-    private Finale finale;
 
     @ManyToOne
     @JoinColumn(name = "castaway_performance_id")

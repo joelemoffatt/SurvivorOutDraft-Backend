@@ -12,28 +12,28 @@ import lombok.Setter;
 @Getter
 @AllArgsConstructor
 @NoArgsConstructor
-public class AdvantageMovement {
+public class TribeMapping {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Integer id;
 
     @ManyToOne
-    @JoinColumn(name = "castaway_id", nullable = false)
-    private CastawayPerformance castawayId;
-
-    @ManyToOne
-    @JoinColumn(name = "played_for_id")
-    private CastawayPerformance playedForId;
+    @JoinColumn(name = "season_id", nullable = false)
+    private Season season;
 
     @ManyToOne
     @JoinColumn(name = "episode_id", nullable = false)
     private Episode episode;
 
+    @ManyToOne
+    @JoinColumn(name = "castaway_performance_id", nullable = false)
+    private CastawayPerformance castawayPerformance;
+
+    @ManyToOne
+    @JoinColumn(name = "tribe_id", nullable = false)
+    private Tribe tribe;
+
     @Column(nullable = false)
-    private String event;
-    @Column(nullable = false)
-    private String advantageType;
-    private String success;
-    private Integer votesNullified;
+    private String status; // e.g., "Swapped", "Merged", "Original"
 }

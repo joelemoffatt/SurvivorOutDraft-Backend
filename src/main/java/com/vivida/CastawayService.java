@@ -27,6 +27,12 @@ public class CastawayService {
         ));
     }
 
+    public Castaway getCastawayByJsonId(String jsonId) {
+        return castawayRepository.findByJsonId(jsonId).orElseThrow(() -> new ResponseStatusException(
+                HttpStatus.NOT_FOUND, "Castaway not found with json_id " + jsonId
+        ));
+    }
+
     public void insertCastaway(Castaway castaway) {
         castawayRepository.save(castaway);
     }

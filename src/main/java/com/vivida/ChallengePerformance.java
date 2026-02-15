@@ -20,11 +20,16 @@ public class ChallengePerformance {
     @ManyToOne
     @JoinColumn(name = "challenge_id")
     private Challenge challenge;
-
+    
     @ManyToOne
     @JoinColumn(name = "castaway_performance_id")
     private CastawayPerformance castaway;
-    private Integer place;
-    private Boolean last;
+
+    private Integer place; // Null should be shown last I do not know why it is null sometimes
+
+    @Column(nullable = false)
     private Boolean satOut;
+    
+    @Column(nullable = false)
+    private Boolean won;
 }

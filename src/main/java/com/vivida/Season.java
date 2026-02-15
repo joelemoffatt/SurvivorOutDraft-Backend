@@ -1,6 +1,7 @@
 package com.vivida;
 
 import jakarta.persistence.*;
+import jakarta.validation.constraints.NotBlank;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -16,15 +17,11 @@ import java.util.List;
 public class Season {
 
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Integer id;
-
-    private String version;
     private Integer season;
+
+    @Column(nullable = false)
+    private String version;
 
     @OneToMany(mappedBy = "season", cascade = CascadeType.ALL)
     private List<Episode> episodes;
-
-    @OneToOne(mappedBy = "season", cascade = CascadeType.ALL)
-    private Finale finale;
 }

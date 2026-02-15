@@ -24,6 +24,11 @@ public class CastawayController {
         return castawayService.getCastawayById(id);
     }
 
+    @GetMapping("by-json-id/{jsonId}")
+    public Castaway getCastawayByJsonId(@PathVariable String jsonId) {
+        return castawayService.getCastawayByJsonId(jsonId);
+    }
+
     @PostMapping
     public void addCastaway(@RequestBody Castaway castaway) {
         castawayService.insertCastaway(castaway);

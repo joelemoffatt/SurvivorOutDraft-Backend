@@ -18,8 +18,8 @@ public class JuryVote {
     private Integer id;
 
     @ManyToOne
-    @JoinColumn(name = "finale_id")
-    private Finale finale;
+    @JoinColumn(name = "episode_id", nullable = false)
+    private Episode episode;
 
     @ManyToOne
     @JoinColumn(name = "castaway_id")
