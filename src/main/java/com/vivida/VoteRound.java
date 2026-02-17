@@ -28,4 +28,5 @@ public class VoteRound {
     
     @Column(nullable = false)
     private Boolean isTie;
-}
+    
+    private Integer voteOrder;}
