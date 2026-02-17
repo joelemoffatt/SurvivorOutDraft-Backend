@@ -37,12 +37,22 @@ public class DataLoader implements CommandLineRunner {
     private static final String DATA_PATH = "/Users/joelmoffatt/VSCode/SurvivorOutDraft/survivoR/data/class-entities/";
     private static final int BATCH_SIZE = 100;
     
+    // Fail counters
+    private int totalSeasonFails = 0;
+    private int totalEpisodeFails = 0;
+    private int totalCastawayFails = 0;
+    private int totalPerfFails = 0;
+    private int totalTribeFails = 0;
+    private int totalTribalFails = 0;
+    private int totalChallengeFails = 0;
+    
     private Map<String, Castaway> castawayCache = new HashMap<>();
     private Map<Integer, Season> seasonCache = new HashMap<>();
     private Map<String, Tribe> tribeByKeyCache = new HashMap<>();  // key: "seasonId:tribeName"
     private Map<Integer, Episode> episodeCache = new HashMap<>();
     private Map<String, CastawayPerformance> perfCache = new HashMap<>();  // key: "seasonNum:castawayId"
     private Map<Integer, Challenge> challengeById = new HashMap<>();  // key: challenge_id
+    private Map<String, Tribal> tribalByKey = new HashMap<>();  // key: "seasonNum:episodeNum:bootOrder"
 
     private List<Map<String, Object>> loadJsonFile(String filename) throws Exception {
         File file = new File(DATA_PATH + filename);
@@ -84,6 +94,9 @@ public class DataLoader implements CommandLineRunner {
             loadChallenges();
             challengeRepository.findAll().forEach(c -> challengeById.put(c.getChallenge_id(), c));
             loadTribal();
+            tribalRepository.findAll().forEach(t -> 
+                tribalByKey.put(t.getEpisode().getSeason().getSeason() + ":" + t.getEpisode().getEpisodeNumber() + ":" + t.getBootOrder(), t));
+            
             loadTribeMapping();
             loadVoteRounds();
             loadChallengePerformances();
@@ -96,7 +109,27 @@ public class DataLoader implements CommandLineRunner {
             System.out.println("\n" + "=".repeat(80));
             long totalTime = (System.currentTimeMillis() - totalStart) / 1000;
             System.out.println("✓ DATA LOAD COMPLETE in " + totalTime + " seconds");
-            System.out.println("=".repeat(80) + "\n");
+            System.out.println("=".repeat(80));
+            
+            // Print fail summary
+            int totalFails = totalSeasonFails + totalEpisodeFails + totalCastawayFails + 
+                            totalPerfFails + totalTribeFails + totalTribalFails + totalChallengeFails;
+            if (totalFails > 0) {
+                System.out.println("\n" + "=".repeat(80));
+                System.out.println("FAIL SUMMARY");
+                System.out.println("=".repeat(80));
+                if (totalSeasonFails > 0) System.out.println("  Season lookup fails:     " + totalSeasonFails);
+                if (totalEpisodeFails > 0) System.out.println("  Episode lookup fails:    " + totalEpisodeFails);
+                if (totalCastawayFails > 0) System.out.println("  Castaway lookup fails:   " + totalCastawayFails);
+                if (totalPerfFails > 0) System.out.println("  Performance lookup fails: " + totalPerfFails);
+                if (totalTribeFails > 0) System.out.println("  Tribe lookup fails:      " + totalTribeFails);
+                if (totalTribalFails > 0) System.out.println("  Tribal lookup fails:     " + totalTribalFails);
+                if (totalChallengeFails > 0) System.out.println("  Challenge lookup fails:  " + totalChallengeFails);
+                System.out.println("  " + "-".repeat(40));
+                System.out.println("  TOTAL FAILS:             " + totalFails);
+                System.out.println("=".repeat(80));
+            }
+            System.out.println();
         } catch (Exception e) {
             System.err.println("ERROR LOADING DATA: " + e.getMessage());
             e.printStackTrace();
@@ -180,6 +213,10 @@ public class DataLoader implements CommandLineRunner {
             castaway.setOccupation(getString(item, "occupation"));
             castaway.setGender(getString(item, "gender"));
             castaway.setDate_of_birth(getString(item, "date_of_birth"));
+            castaway.setDate_of_death(getString(item, "date_of_death"));
+            castaway.setHobbies(getString(item, "hobbies"));
+            castaway.setPet_peeves(getString(item, "pet_peeves"));
+            castaway.setThree_words(getString(item, "three_words"));
             castaways.add(castaway);
         }
         saveInBatches(castaways, "castaways");
@@ -204,10 +241,12 @@ public class DataLoader implements CommandLineRunner {
             
             if (season == null) {
                 seasonFails++;
+                System.out.println("  ⚠ CastawayPerformance: Season not found - season=" + seasonNum);
                 continue;
             }
             if (castaway == null) {
                 castawayFails++;
+                System.out.println("  ⚠ CastawayPerformance: Castaway not found - castaway_id=" + castawayId);
                 continue;
             }
             
@@ -217,6 +256,8 @@ public class DataLoader implements CommandLineRunner {
             performances.add(perf);
         }
         saveInBatches(performances, "castaway performances");
+        totalSeasonFails += seasonFails;
+        totalCastawayFails += castawayFails;
         if (seasonFails > 0 || castawayFails > 0) System.out.println("  (fails: season=" + seasonFails + ", castaway=" + castawayFails + ")");
     }
 
@@ -333,12 +374,14 @@ public class DataLoader implements CommandLineRunner {
             Season season = seasonCache.get(seasonNum);
             if (season == null) {
                 seasonFails++;
+                System.out.println("  ⚠ Tribal: Season not found - season=" + seasonNum);
                 continue;
             }
             
             Episode episode = episodeRepository.findById(seasonNum * 1000 + episodeNum).orElse(null);
             if (episode == null) {
                 episodeFails++;
+                System.out.println("  ⚠ Tribal: Episode not found - season=" + seasonNum + ", episode=" + episodeNum);
                 continue;
             }
             
@@ -346,15 +389,20 @@ public class DataLoader implements CommandLineRunner {
             Tribe tribe = tribeByKeyCache.get(tribeKey);
             if (tribe == null) {
                 tribeFails++;
+                System.out.println("  ⚠ Tribal: Tribe not found - season=" + seasonNum + ", tribe=" + tribeName);
                 continue;
             }
             
             Tribal tribal = new Tribal();
             tribal.setEpisode(episode);
             tribal.setTribe(tribe);
+            tribal.setBootOrder(getInt(item, "boot_order"));
             tribals.add(tribal);
         }
         tribalRepository.saveAll(tribals);
+        totalSeasonFails += seasonFails;
+        totalEpisodeFails += episodeFails;
+        totalTribeFails += tribeFails;
         System.out.println("✓ Loaded " + tribals.size() + " tribal councils (season_fails=" + seasonFails + ", episode_fails=" + episodeFails + ", tribe_fails=" + tribeFails + ")\n");
     }
 
@@ -373,18 +421,21 @@ public class DataLoader implements CommandLineRunner {
             Challenge challenge = challengeById.getOrDefault(challengeId, null);
             if (challenge == null) {
                 challengeFails++;
+                System.out.println("  ⚠ ChallengePerformance: Challenge not found - challenge_id=" + challengeId);
                 continue;
             }
             
             Castaway castaway = castawayCache.getOrDefault(castawayId, null);
             if (castaway == null) {
                 castawayFails++;
+                System.out.println("  ⚠ ChallengePerformance: Castaway not found - castaway_id=" + castawayId);
                 continue;
             }
             
             CastawayPerformance castawayPerf = perfCache.get(seasonNum + ":" + castawayId);
             if (castawayPerf == null) {
                 perfFails++;
+                System.out.println("  ⚠ ChallengePerformance: Performance not found - season=" + seasonNum + ", castaway_id=" + castawayId);
                 continue;
             }
             
@@ -397,6 +448,9 @@ public class DataLoader implements CommandLineRunner {
             performances.add(perf);
         }
         challengePerformanceRepository.saveAll(performances);
+        totalChallengeFails += challengeFails;
+        totalCastawayFails += castawayFails;
+        totalPerfFails += perfFails;
         System.out.println("✓ Loaded " + performances.size() + " challenge performances (challenge_fails=" + challengeFails + ", castaway_fails=" + castawayFails + ", perf_fails=" + perfFails + ")\n");
     }
 
@@ -416,24 +470,28 @@ public class DataLoader implements CommandLineRunner {
             Season season = seasonCache.get(seasonNum);
             if (season == null) {
                 seasonFails++;
+                System.out.println("  ⚠ TribeMapping: Season not found - season=" + seasonNum);
                 continue;
             }
             
             Episode episode = episodeRepository.findById(seasonNum * 1000 + episodeNum).orElse(null);
             if (episode == null) {
                 episodeFails++;
+                System.out.println("  ⚠ TribeMapping: Episode not found - season=" + seasonNum + ", episode=" + episodeNum);
                 continue;
             }
             
             Castaway castaway = castawayCache.getOrDefault(castawayId, null);
             if (castaway == null) {
                 castawayFails++;
+                System.out.println("  ⚠ TribeMapping: Castaway not found - castaway_id=" + castawayId);
                 continue;
             }
             
             CastawayPerformance castawayPerf = perfCache.get(seasonNum + ":" + castawayId);
             if (castawayPerf == null) {
                 perfFails++;
+                System.out.println("  ⚠ TribeMapping: Performance not found - season=" + seasonNum + ", castaway_id=" + castawayId);
                 continue;
             }
             
@@ -441,6 +499,7 @@ public class DataLoader implements CommandLineRunner {
             Tribe oldTribe = tribeByKeyCache.get(tribeKey);
             if (oldTribe == null) {
                 tribeFails++;
+                System.out.println("  ⚠ TribeMapping: Tribe not found - season=" + seasonNum + ", tribe=" + tribeName);
                 continue;
             }
             
@@ -453,6 +512,11 @@ public class DataLoader implements CommandLineRunner {
             mappings.add(mapping);
         }
         tribeMappingRepository.saveAll(mappings);
+        totalSeasonFails += seasonFails;
+        totalEpisodeFails += episodeFails;
+        totalCastawayFails += castawayFails;
+        totalPerfFails += perfFails;
+        totalTribeFails += tribeFails;
         System.out.println("✓ Loaded " + mappings.size() + " tribe mappings (season=" + seasonFails + ", episode=" + episodeFails + ", castaway=" + castawayFails + ", perf=" + perfFails + ", tribe=" + tribeFails + ")\n");
     }
 
@@ -467,31 +531,28 @@ public class DataLoader implements CommandLineRunner {
             Integer seasonNum = getInt(item, "season");
             Integer episodeNum = getInt(item, "episode");
             String tribeName = getString(item, "tribe");
+            Integer bootOrder = getInt(item, "boot_order");
             
             Season season = seasonCache.get(seasonNum);
             if (season == null) continue;
             
-            Tribal tribal = null;
-            for (Tribal t : tribalRepository.findAll()) {
-                if (t.getEpisode().getSeason().getSeason().equals(seasonNum) && 
-                    t.getEpisode().getEpisodeNumber().equals(episodeNum) &&
-                    t.getTribe().getName().equals(tribeName)) {
-                    tribal = t;
-                    break;
-                }
-            }
+            String tribalKey = seasonNum + ":" + episodeNum + ":" + bootOrder;
+            Tribal tribal = tribalByKey.get(tribalKey);
             if (tribal == null) {
                 tribalFails++;
+                System.out.println("  ⚠ VoteRound: Tribal not found - season=" + seasonNum + ", episode=" + episodeNum + ", bootOrder=" + bootOrder);
                 continue;
             }
             
             VoteRound voteRound = new VoteRound();
             voteRound.setTribal(tribal);
             voteRound.setIsTie(getBoolean(item, "is_tie"));
+            voteRound.setVoteOrder(getInt(item, "vote_order"));
             voteRounds.add(voteRound);
         }
         voteRoundRepository.saveAll(voteRounds);
-        System.out.println("✓ Loaded " + voteRounds.size() + " vote rounds\n");
+        totalTribalFails += tribalFails;
+        System.out.println("✓ Loaded " + voteRounds.size() + " vote rounds (tribal_fails=" + tribalFails + ")\n");
     }
 
     private void loadVotes() throws Exception {
@@ -602,32 +663,78 @@ public class DataLoader implements CommandLineRunner {
 
         System.out.println("Loading Boots...");
         List<Boot> boots = new ArrayList<>();
+        int seasonFails = 0, episodeFails = 0, castawayFails = 0, perfFails = 0, tribalFails = 0;
         for (Map<String, Object> item : data) {
             Integer seasonNum = getInt(item, "season");
             Integer episodeNum = getInt(item, "episode");
             String castawayId = getString(item, "castaway_id");
+            String tribeName = getString(item, "tribe");
             
             Season season = seasonCache.get(seasonNum);
-            if (season == null) continue;
+            if (season == null) {
+                seasonFails++;
+                System.out.println("  ⚠ Boot: Season not found - season=" + seasonNum);
+                continue;
+            }
 
             Episode episode = episodeRepository.findById(seasonNum * 1000 + episodeNum).orElse(null);
-            if (episode == null) continue;
+            if (episode == null) {
+                episodeFails++;
+                System.out.println("  ⚠ Boot: Episode not found - season=" + seasonNum + ", episode=" + episodeNum);
+                continue;
+            }
 
             Castaway castaway = castawayCache.getOrDefault(castawayId, null);
-            if (castaway == null) continue;
+            if (castaway == null) {
+                castawayFails++;
+                System.out.println("  ⚠ Boot: Castaway not found - castaway_id=" + castawayId);
+                continue;
+            }
             
             CastawayPerformance castawayPerf = perfCache.get(seasonNum + ":" + castawayId);
-            if (castawayPerf == null) continue;
+            if (castawayPerf == null) {
+                perfFails++;
+                System.out.println("  ⚠ Boot: Performance not found - season=" + seasonNum + ", castaway_id=" + castawayId);
+                continue;
+            }
+            
+            String event = getString(item, "event");
+            
+            // Look up tribal council for events that happen at tribal council
+            // Events at tribal: votedOut, eliminated, lostFire (final 4 fire), tiedDestiny
+            // Events NOT at tribal: medEvac, quit, ejected, lostFinalFire (finale fire), first/second/third, switched, other
+            Tribal tribal = null;
+            boolean hasTribal = event != null && (
+                event.equals("votedOut") || 
+                event.equals("eliminated") || 
+                event.equals("lostFire") ||
+                event.equals("tiedDestiny")
+            );
+            
+            if (hasTribal) {
+                Integer bootOrder = getInt(item, "boot_order");
+                tribal = tribalByKey.get(seasonNum + ":" + episodeNum + ":" + bootOrder);
+                if (tribal == null) {
+                    tribalFails++;
+                    System.out.println("  ⚠ Boot: Tribal not found for tribal event - season=" + seasonNum + ", episode=" + episodeNum + ", bootOrder=" + bootOrder + ", event=" + event);
+                }
+            }
             
             Boot boot = new Boot();
             boot.setEpisode(episode);
             boot.setCastaway(castawayPerf);
             boot.setBootOrder(getInt(item, "boot_order"));
-            boot.setEvent(getString(item, "event"));
+            boot.setEvent(event);
+            boot.setTribal(tribal);
             boots.add(boot);
         }
         bootRepository.saveAll(boots);
-        System.out.println("✓ Loaded " + boots.size() + " boots\n");
+        totalSeasonFails += seasonFails;
+        totalEpisodeFails += episodeFails;
+        totalCastawayFails += castawayFails;
+        totalPerfFails += perfFails;
+        totalTribalFails += tribalFails;
+        System.out.println("✓ Loaded " + boots.size() + " boots (season_fails=" + seasonFails + ", episode_fails=" + episodeFails + ", castaway_fails=" + castawayFails + ", perf_fails=" + perfFails + ", tribal_fails=" + tribalFails + ")\n");
     }
 
     private void loadAdvantageMovements() throws Exception {

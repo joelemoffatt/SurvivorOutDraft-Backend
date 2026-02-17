@@ -22,7 +22,7 @@ public class Boot {
     private Episode episode;
 
     @OneToOne
-    @JoinColumn(name = "tribal_id")
+    @JoinColumn(name = "tribal_id", unique = true)
     private Tribal tribal;
 
     @ManyToOne
@@ -31,5 +31,5 @@ public class Boot {
     @Column(nullable = false)
     private Integer bootOrder;
     @Column(nullable = false)
-    private String event; // e.g., "votedOut", "quit", "medEvac", "lostFire"
+    private String event; // e.g., "votedOut", "quit", "medEvac", "lostFire", "lostFinalFire"
 }

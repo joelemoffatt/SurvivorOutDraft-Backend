@@ -26,6 +26,9 @@ public class Tribal {
     @ManyToOne
     @JoinColumn(name = "tribe_id", nullable = false)
     private Tribe tribe;
+    
+    @Column(nullable = false)
+    private Integer bootOrder; // Links to the boot that happened at this tribal
 
     @OneToMany(mappedBy = "tribal", cascade = CascadeType.ALL)
     private List<VoteRound> votes;

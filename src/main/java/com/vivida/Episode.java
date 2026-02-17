@@ -50,5 +50,5 @@ public class Episode {
     private List<Tribal> tribals;
 
     @OneToMany(mappedBy = "episode", cascade = CascadeType.ALL)
-    private List<Boot> nonVotedBoots; // Boots that were not due to tribal council votes
+    private List<Boot> boots; // All boots in this episode (voted and non-voted)
 }
