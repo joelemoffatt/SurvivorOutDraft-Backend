@@ -9,6 +9,7 @@ public enum RuleType {
     SOLE_SURVIVOR,
     RUNNER_UP,
     FINAL_THREE_BONUS,
+    MADE_MERGE,
     MED_EVAC,
     QUIT
 }

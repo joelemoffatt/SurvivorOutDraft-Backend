@@ -7,8 +7,10 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.security.crypto.password.PasswordEncoder;
 
 import java.io.File;
+import java.time.LocalDateTime;
 import java.util.*;
 
 @Component
@@ -29,6 +31,14 @@ public class DataLoader implements CommandLineRunner {
     @Autowired private BootRepository bootRepository;
     @Autowired private AdvantageMovementRepository advantageMovementRepository;
     @Autowired private TribeMappingRepository tribeMappingRepository;
+    @Autowired private UserRepository userRepository;
+    @Autowired private GroupRepository groupRepository;
+    @Autowired private GroupMemberRepository groupMemberRepository;
+    @Autowired private TeamRepository teamRepository;
+    @Autowired private TeamCastawayRepository teamCastawayRepository;
+    @Autowired private PointRuleRepository pointRuleRepository;
+    @Autowired private PointCalculationService pointCalculationService;
+    @Autowired private PasswordEncoder passwordEncoder;
     
     @PersistenceContext
     private EntityManager entityManager;
@@ -105,6 +115,7 @@ public class DataLoader implements CommandLineRunner {
             loadJourneys();
             loadBoots();
             loadAdvantageMovements();
+            seedPointCalcTestData();
             
             System.out.println("\n" + "=".repeat(80));
             long totalTime = (System.currentTimeMillis() - totalStart) / 1000;
@@ -530,7 +541,6 @@ public class DataLoader implements CommandLineRunner {
         for (Map<String, Object> item : data) {
             Integer seasonNum = getInt(item, "season");
             Integer episodeNum = getInt(item, "episode");
-            String tribeName = getString(item, "tribe");
             Integer bootOrder = getInt(item, "boot_order");
             
             Season season = seasonCache.get(seasonNum);
@@ -596,6 +606,13 @@ public class DataLoader implements CommandLineRunner {
         if (data.isEmpty()) return;
 
         System.out.println("Loading Jury Votes...");
+        // Build finale lookup once to avoid per-row DB queries.
+        Map<Integer, Episode> finaleBySeason = new HashMap<>();
+        for (Episode episode : episodeCache.values()) {
+            if (Boolean.TRUE.equals(episode.getIsFinale())) {
+                finaleBySeason.put(episode.getSeason().getSeason(), episode);
+            }
+        }
         List<JuryVote> juryVotes = new ArrayList<>();
         for (Map<String, Object> item : data) {
             Integer seasonNum = getInt(item, "season");
@@ -604,7 +621,7 @@ public class DataLoader implements CommandLineRunner {
             
             Season season = seasonCache.get(seasonNum);
             if (season == null) continue;
-            Episode finaleEpisode = episodeRepository.findBySeasonAndIsFinaleTrue(season);
+            Episode finaleEpisode = finaleBySeason.get(seasonNum);
             if (finaleEpisode == null) continue;
             
             CastawayPerformance castawayPerf = perfCache.get(seasonNum + ":" + castawayId);
@@ -668,7 +685,6 @@ public class DataLoader implements CommandLineRunner {
             Integer seasonNum = getInt(item, "season");
             Integer episodeNum = getInt(item, "episode");
             String castawayId = getString(item, "castaway_id");
-            String tribeName = getString(item, "tribe");
             
             Season season = seasonCache.get(seasonNum);
             if (season == null) {
@@ -737,6 +753,127 @@ public class DataLoader implements CommandLineRunner {
         System.out.println("✓ Loaded " + boots.size() + " boots (season_fails=" + seasonFails + ", episode_fails=" + episodeFails + ", castaway_fails=" + castawayFails + ", perf_fails=" + perfFails + ", tribal_fails=" + tribalFails + ")\n");
     }
 
+    private void seedPointCalcTestData() {
+        String groupName = "Point Calc Test Group";
+        if (groupRepository.findByName(groupName).isPresent()) {
+            System.out.println("✓ Test group already exists, skipping seed data\n");
+            return;
+        }
+
+        if (seasonCache.isEmpty()) {
+            System.out.println("⚠  No seasons available for test group\n");
+            return;
+        }
+
+        Integer seasonNum = 49;
+
+        Season season = seasonCache.get(seasonNum);
+        if (season == null) {
+            System.out.println("⚠  Season not found for test group\n");
+            return;
+        }
+
+        System.out.println("Seeding test group, users, teams, and point rules...");
+
+        List<User> users = new ArrayList<>();
+        for (int i = 1; i <= 3; i++) {
+            String username = "testuser" + i;
+            String email = "testuser" + i + "@example.com";
+            User user = userRepository.findByUsername(username).orElse(null);
+            if (user == null) {
+                user = new User();
+                user.setUsername(username);
+                user.setEmail(email);
+                user.setPassword(passwordEncoder.encode("password"));
+                user.setRole(Role.USER);
+                user.setEnabled(true);
+                userRepository.save(user);
+            }
+            users.add(user);
+        }
+
+        Group group = new Group();
+        group.setName(groupName);
+        group.setAdmin(users.get(0));
+        group.setSeason(season);
+        group.setDraftDate(LocalDateTime.now());
+        group.setStatus(GroupStatus.COMPLETED);
+        groupRepository.save(group);
+
+        for (User user : users) {
+            GroupMember member = new GroupMember();
+            member.setGroup(group);
+            member.setUser(user);
+            member.setStatus(MembershipStatus.ACCEPTED);
+            groupMemberRepository.save(member);
+        }
+
+        List<PointRule> rules = new ArrayList<>();
+        rules.add(buildPointRule(group, RuleType.INDIVIDUAL_IMMUNITY, 2, "Individual immunity wins"));
+        rules.add(buildPointRule(group, RuleType.FOUND_IDOL, 1, "Found idol"));
+        rules.add(buildPointRule(group, RuleType.FOUND_ADVANTAGE, 1, "Found advantage"));
+        rules.add(buildPointRule(group, RuleType.SOLE_SURVIVOR, 5, "Sole Survivor"));
+        rules.add(buildPointRule(group, RuleType.RUNNER_UP, 2, "Runner-up"));
+        rules.add(buildPointRule(group, RuleType.MADE_MERGE, 1, "Made the merge"));
+        rules.add(buildPointRule(group, RuleType.MED_EVAC, -2, "Med evac"));
+        rules.add(buildPointRule(group, RuleType.QUIT, -2, "Quit"));
+        pointRuleRepository.saveAll(rules);
+
+        List<Team> teams = new ArrayList<>();
+        for (User user : users) {
+            Team team = new Team();
+            team.setGroup(group);
+            team.setUser(user);
+            team.setTeamName("Team " + user.getUsername());
+            teamRepository.save(team);
+            teams.add(team);
+        }
+
+        List<CastawayPerformance> performances = new ArrayList<>();
+        for (CastawayPerformance performance : perfCache.values()) {
+            if (performance.getSeason().getSeason().equals(seasonNum)) {
+                performances.add(performance);
+            }
+        }
+
+        Collections.shuffle(performances, new Random());
+
+        Map<Integer, Integer> draftOrderByTeamId = new HashMap<>();
+        for (int i = 0; i < performances.size(); i++) {
+            Team team = teams.get(i % teams.size());
+            Integer teamId = team.getId();
+            int draftOrder = draftOrderByTeamId.getOrDefault(teamId, 0) + 1;
+            draftOrderByTeamId.put(teamId, draftOrder);
+
+            TeamCastaway teamCastaway = new TeamCastaway();
+            teamCastaway.setTeam(team);
+            teamCastaway.setCastawayPerformance(performances.get(i));
+            teamCastaway.setDraftOrder(draftOrder);
+            teamCastawayRepository.save(teamCastaway);
+        }
+
+        for (Team team : teams) {
+            pointCalculationService.calculateAndUpdateTeamPoints(team.getId());
+        }
+
+        System.out.println("✓ Test group seeded. Final team points:");
+        for (Team team : teams) {
+            Team updatedTeam = teamRepository.findById(team.getId()).orElse(team);
+            System.out.println("  " + updatedTeam.getTeamName() + ": " + updatedTeam.getTotalPoints());
+        }
+        System.out.println();
+    }
+
+    private PointRule buildPointRule(Group group, RuleType ruleType, int points, String description) {
+        PointRule rule = new PointRule();
+        rule.setGroup(group);
+        rule.setRuleType(ruleType);
+        rule.setPoints(points);
+        rule.setDescription(description);
+        rule.setActive(true);
+        return rule;
+    }
+
     private void loadAdvantageMovements() throws Exception {
         List<Map<String, Object>> data = loadJsonFile("advantageMovement.json");
         if (data.isEmpty()) return;
@@ -800,26 +937,3 @@ public class DataLoader implements CommandLineRunner {
         return null;
     }
 }
-
-
-// ================================================================================
-// LOADING SURVIVOR DATA INTO DATABASE
-// ================================================================================
-
-// Loading Seasons...
-// ✓ Loaded 50 seasons
-
-// Loading Castaways...
-// ✓ Loaded 751 castaways
-
-// Loading Castaway Performances...
-// ✓ Loaded 917 castaway performances
-
-// Loading Tribes...
-// ✓ Loaded 188 tribes
-// ✓ Loaded 751 castaways
-
-// Loading Castaway Performances...
-// ^C✓ Loaded 917 castaway performances
-
-// Loading Episodes...

@@ -9,13 +9,12 @@ import java.util.List;
 @Transactional
 public class PointCalculationService {
 
-    private static final boolean DEBUG = true;
-
     private final ChallengePerformanceRepository challengePerformanceRepository;
     private final VoteRepository voteRepository;
     private final BootRepository bootRepository;
     private final JuryVoteRepository juryVoteRepository;
     private final AdvantageMovementRepository advantageMovementRepository;
+    private final TribeMappingRepository tribeMappingRepository;
     private final PointRuleRepository pointRuleRepository;
     private final TeamCastawayRepository teamCastawayRepository;
     private final TeamService teamService;
@@ -26,6 +25,7 @@ public class PointCalculationService {
             BootRepository bootRepository,
             JuryVoteRepository juryVoteRepository,
             AdvantageMovementRepository advantageMovementRepository,
+            TribeMappingRepository tribeMappingRepository,
             PointRuleRepository pointRuleRepository,
             TeamCastawayRepository teamCastawayRepository,
             TeamService teamService
@@ -35,6 +35,7 @@ public class PointCalculationService {
         this.bootRepository = bootRepository;
         this.juryVoteRepository = juryVoteRepository;
         this.advantageMovementRepository = advantageMovementRepository;
+        this.tribeMappingRepository = tribeMappingRepository;
         this.pointRuleRepository = pointRuleRepository;
         this.teamCastawayRepository = teamCastawayRepository;
         this.teamService = teamService;
@@ -47,29 +48,27 @@ public class PointCalculationService {
         Group group = teamCastaway.getTeam().getGroup();
         CastawayPerformance castawayPerformance = teamCastaway.getCastawayPerformance();
         Integer seasonId = group.getSeason().getSeason();
-
-        debug("\n[Points] Team=" + teamCastaway.getTeam().getId()
-                + " CastawayPerf=" + castawayPerformance.getId()
-                + " Season=" + seasonId);
         
         int totalPoints = 0;
         List<PointRule> rules = pointRuleRepository.findByGroupIdAndActive(group.getId(), true);
 
-        debug("[Points] Active rules=" + rules.size());
+        String castawayName = castawayPerformance.getCastaway().getName();
+        System.out.println("  Castaway: " + castawayName + " (perfId=" + castawayPerformance.getId() + ")");
 
         for (PointRule rule : rules) {
             int ruleCount = countOccurrences(castawayPerformance, rule.getRuleType(), seasonId);
-            totalPoints += ruleCount * rule.getPoints();
-            debug("[Points] Rule=" + rule.getRuleType()
-                    + " count=" + ruleCount
+            int subtotal = ruleCount * rule.getPoints();
+            totalPoints += subtotal;
+            System.out.println("    " + rule.getRuleType()
+                    + ": count=" + ruleCount
                     + " pointsEach=" + rule.getPoints()
-                    + " subtotal=" + (ruleCount * rule.getPoints()));
+                    + " subtotal=" + subtotal);
         }
 
         teamCastaway.setPoints(totalPoints);
         teamCastawayRepository.save(teamCastaway);
 
-        debug("[Points] Total points for TeamCastaway " + teamCastaway.getId() + " = " + totalPoints);
+        System.out.println("    Castaway total: " + totalPoints + "\n");
         
         // Recalculate team total points
         teamService.recalculateTeamPoints(teamCastaway.getTeam().getId());
@@ -79,10 +78,14 @@ public class PointCalculationService {
      * Calculate and update points for all castaways in a team
      */
     public void calculateAndUpdateTeamPoints(Integer teamId) {
+        Team team = teamService.getTeamById(teamId);
+        System.out.println("\nTeam: " + team.getTeamName() + " (id=" + teamId + ")");
         List<TeamCastaway> roster = teamCastawayRepository.findByTeamId(teamId);
         for (TeamCastaway teamCastaway : roster) {
             calculateAndUpdateTeamCastawayPoints(teamCastaway);
         }
+        Team updatedTeam = teamService.getTeamById(teamId);
+        System.out.println("Team total: " + updatedTeam.getTotalPoints() + "\n");
     }
 
     /**
@@ -112,305 +115,119 @@ public class PointCalculationService {
             case SOLE_SURVIVOR -> countSoleSurvivor(castawayPerformance, seasonId);
             case RUNNER_UP -> countRunnerUp(castawayPerformance, seasonId);
             case FINAL_THREE_BONUS -> countFinalThreeBonus(castawayPerformance, seasonId);
+            case MADE_MERGE -> countMadeMerge(castawayPerformance, seasonId);
             case MED_EVAC -> countMedEvac(castawayPerformance, seasonId);
             case QUIT -> countQuit(castawayPerformance, seasonId);
         };
     }
 
+    private int countMadeMerge(CastawayPerformance castawayPerformance, Integer seasonId) {
+        long count = tribeMappingRepository.countMergedBySeasonAndCastawayPerformance(
+                seasonId,
+                castawayPerformance.getId());
+        return count > 0 ? 1 : 0;
+    }
+
     private int countIndividualImmunity(CastawayPerformance castawayPerformance, Integer seasonId) {
-        List<ChallengePerformance> performances = challengePerformanceRepository.findBySeasonId(seasonId);
-        int castawayMatches = 0;
-        int wonMatches = 0;
-        int typeMatches = 0;
-        for (ChallengePerformance cp : performances) {
-            if (!cp.getCastaway().getId().equals(castawayPerformance.getId())) {
-                continue;
-            }
-            castawayMatches++;
-            if (cp.getWon() != null && cp.getWon()) {
-                wonMatches++;
-                String type = cp.getChallenge().getChallenge_type();
-                if (type != null && (type.equals("Individual Immunity and Reward") || type.equals("Individual Immunity"))) {
-                    typeMatches++;
-                }
-            }
-        }
-
-        debug("  [INDIVIDUAL_IMMUNITY] season=" + seasonId
-                + " total=" + performances.size()
-                + " castaway=" + castawayMatches
-                + " won=" + wonMatches
-                + " typeMatch=" + typeMatches);
-
-        return typeMatches;
+        return (int) challengePerformanceRepository.findBySeasonId(seasonId).stream()
+                .filter(cp -> cp.getCastaway().getId().equals(castawayPerformance.getId()))
+                .filter(cp -> cp.getWon() != null && cp.getWon())
+                .filter(cp -> {
+                    String type = cp.getChallenge().getChallenge_type();
+                    return type != null && (type.equals("Individual Immunity and Reward") || type.equals("Individual Immunity"));
+                })
+                .count();
     }
 
     private int countFoundIdols(CastawayPerformance castawayPerformance, Integer seasonId) {
-        List<AdvantageMovement> movements = advantageMovementRepository.findBySeasonId(seasonId);
-        int castawayMatches = 0;
-        int eventMatches = 0;
-        int typeMatches = 0;
-        for (AdvantageMovement am : movements) {
-            if (!am.getCastawayId().getId().equals(castawayPerformance.getId())) {
-                continue;
-            }
-            castawayMatches++;
-            if (am.getEvent() != null && am.getEvent().equals("Found")) {
-                eventMatches++;
-                String type = am.getAdvantageType();
-                if (type != null && type.toLowerCase().contains("idol")) {
-                    typeMatches++;
-                }
-            }
-        }
-
-        debug("  [FOUND_IDOL] season=" + seasonId
-                + " total=" + movements.size()
-                + " castaway=" + castawayMatches
-                + " eventFound=" + eventMatches
-                + " idolType=" + typeMatches);
-
-        return typeMatches;
+        return (int) advantageMovementRepository.findBySeasonId(seasonId).stream()
+                .filter(am -> am.getCastawayId().getId().equals(castawayPerformance.getId()))
+                .filter(am -> am.getEvent() != null && am.getEvent().equals("Found"))
+                .filter(am -> am.getAdvantageType() != null && am.getAdvantageType().toLowerCase().contains("idol"))
+                .count();
     }
 
     private int countFoundAdvantages(CastawayPerformance castawayPerformance, Integer seasonId) {
-        List<AdvantageMovement> movements = advantageMovementRepository.findBySeasonId(seasonId);
-        int castawayMatches = 0;
-        int eventMatches = 0;
-        int typeMatches = 0;
-        for (AdvantageMovement am : movements) {
-            if (!am.getCastawayId().getId().equals(castawayPerformance.getId())) {
-                continue;
-            }
-            castawayMatches++;
-            if (am.getEvent() != null && am.getEvent().equals("Found")) {
-                eventMatches++;
-                String type = am.getAdvantageType();
-                if (type != null && !type.toLowerCase().contains("idol")) {
-                    typeMatches++;
-                }
-            }
-        }
-
-        debug("  [FOUND_ADVANTAGE] season=" + seasonId
-                + " total=" + movements.size()
-                + " castaway=" + castawayMatches
-                + " eventFound=" + eventMatches
-                + " nonIdolType=" + typeMatches);
-
-        return typeMatches;
+        return (int) advantageMovementRepository.findBySeasonId(seasonId).stream()
+                .filter(am -> am.getCastawayId().getId().equals(castawayPerformance.getId()))
+                .filter(am -> am.getEvent() != null && am.getEvent().equals("Found"))
+                .filter(am -> am.getAdvantageType() != null && !am.getAdvantageType().toLowerCase().contains("idol"))
+                .count();
     }
 
     private int countPlayedIdolSuccessfully(CastawayPerformance castawayPerformance, Integer seasonId) {
-        List<AdvantageMovement> movements = advantageMovementRepository.findBySeasonId(seasonId);
-        int castawayMatches = 0;
-        int eventMatches = 0;
-        int typeMatches = 0;
-        int successMatches = 0;
-        for (AdvantageMovement am : movements) {
-            if (!am.getCastawayId().getId().equals(castawayPerformance.getId())) {
-                continue;
-            }
-            castawayMatches++;
-            if (am.getEvent() != null && am.getEvent().equals("Played")) {
-                eventMatches++;
-                String type = am.getAdvantageType();
-                if (type != null && type.toLowerCase().contains("idol")) {
-                    typeMatches++;
-                    if (am.getSuccess() != null && am.getSuccess().equalsIgnoreCase("true")) {
-                        successMatches++;
-                    }
-                }
-            }
-        }
-
-        debug("  [PLAYED_IDOL_SUCCESSFULLY] season=" + seasonId
-                + " total=" + movements.size()
-                + " castaway=" + castawayMatches
-                + " eventPlayed=" + eventMatches
-                + " idolType=" + typeMatches
-                + " success=" + successMatches);
-
-        return successMatches;
+        return (int) advantageMovementRepository.findBySeasonId(seasonId).stream()
+                .filter(am -> am.getCastawayId().getId().equals(castawayPerformance.getId()))
+                .filter(am -> am.getEvent() != null && am.getEvent().equals("Played"))
+                .filter(am -> am.getAdvantageType() != null && am.getAdvantageType().toLowerCase().contains("idol"))
+                .filter(am -> am.getSuccess() != null && am.getSuccess().equalsIgnoreCase("true"))
+                .count();
     }
 
     private int countPlayedAdvantageSuccessfully(CastawayPerformance castawayPerformance, Integer seasonId) {
-        List<AdvantageMovement> movements = advantageMovementRepository.findBySeasonId(seasonId);
-        int castawayMatches = 0;
-        int eventMatches = 0;
-        int typeMatches = 0;
-        int successMatches = 0;
-        for (AdvantageMovement am : movements) {
-            if (!am.getCastawayId().getId().equals(castawayPerformance.getId())) {
-                continue;
-            }
-            castawayMatches++;
-            if (am.getEvent() != null && am.getEvent().equals("Played")) {
-                eventMatches++;
-                String type = am.getAdvantageType();
-                if (type != null && !type.toLowerCase().contains("idol")) {
-                    typeMatches++;
-                    if (am.getSuccess() != null && am.getSuccess().equalsIgnoreCase("true")) {
-                        successMatches++;
-                    }
-                }
-            }
-        }
-
-        debug("  [PLAYED_ADVANTAGE_SUCCESSFULLY] season=" + seasonId
-                + " total=" + movements.size()
-                + " castaway=" + castawayMatches
-                + " eventPlayed=" + eventMatches
-                + " nonIdolType=" + typeMatches
-                + " success=" + successMatches);
-
-        return successMatches;
+        return (int) advantageMovementRepository.findBySeasonId(seasonId).stream()
+                .filter(am -> am.getCastawayId().getId().equals(castawayPerformance.getId()))
+                .filter(am -> am.getEvent() != null && am.getEvent().equals("Played"))
+                .filter(am -> am.getAdvantageType() != null && !am.getAdvantageType().toLowerCase().contains("idol"))
+                .filter(am -> am.getSuccess() != null && am.getSuccess().equalsIgnoreCase("true"))
+                .count();
     }
 
     private boolean bootExistsForCastaway(CastawayPerformance castawayPerformance, Integer seasonId) {
-        List<Boot> boots = bootRepository.findBySeasonId(seasonId);
-        boolean exists = boots.stream()
+        return bootRepository.findBySeasonId(seasonId).stream()
             .anyMatch(boot -> boot.getCastaway().getId().equals(castawayPerformance.getId()));
-
-        debug("  [BOOT_EXISTS] season=" + seasonId
-            + " total=" + boots.size()
-            + " castaway=" + castawayPerformance.getId()
-            + " exists=" + exists);
-
-        return exists;
     }
 
     private int countSoleSurvivor(CastawayPerformance castawayPerformance, Integer seasonId) {
         if (!bootExistsForCastaway(castawayPerformance, seasonId)) {
             return 0;
         }
-        List<Boot> boots = bootRepository.findBySeasonId(seasonId);
-        int castawayMatches = 0;
-        int eventMatches = 0;
-        for (Boot boot : boots) {
-            if (!boot.getCastaway().getId().equals(castawayPerformance.getId())) {
-                continue;
-            }
-            castawayMatches++;
-            if (boot.getEvent() != null && boot.getEvent().toLowerCase().equals("first")) {
-                eventMatches++;
-            }
-        }
-
-        debug("  [SOLE_SURVIVOR] season=" + seasonId
-                + " total=" + boots.size()
-                + " castaway=" + castawayMatches
-                + " eventFirst=" + eventMatches);
-
-        return eventMatches;
+        return (int) bootRepository.findBySeasonId(seasonId).stream()
+                .filter(boot -> boot.getCastaway().getId().equals(castawayPerformance.getId()))
+                .filter(boot -> boot.getEvent() != null && boot.getEvent().toLowerCase().equals("first"))
+                .count();
     }
 
     private int countRunnerUp(CastawayPerformance castawayPerformance, Integer seasonId) {
         if (!bootExistsForCastaway(castawayPerformance, seasonId)) {
             return 0;
         }
-        List<Boot> boots = bootRepository.findBySeasonId(seasonId);
-        int castawayMatches = 0;
-        int eventMatches = 0;
-        for (Boot boot : boots) {
-            if (!boot.getCastaway().getId().equals(castawayPerformance.getId())) {
-                continue;
-            }
-            castawayMatches++;
-            if (boot.getEvent() != null && boot.getEvent().toLowerCase().equals("second")) {
-                eventMatches++;
-            }
-        }
-
-        debug("  [RUNNER_UP] season=" + seasonId
-                + " total=" + boots.size()
-                + " castaway=" + castawayMatches
-                + " eventSecond=" + eventMatches);
-
-        return eventMatches;
+        return (int) bootRepository.findBySeasonId(seasonId).stream()
+                .filter(boot -> boot.getCastaway().getId().equals(castawayPerformance.getId()))
+                .filter(boot -> boot.getEvent() != null && boot.getEvent().toLowerCase().equals("second"))
+                .count();
     }
 
     private int countFinalThreeBonus(CastawayPerformance castawayPerformance, Integer seasonId) {
         if (!bootExistsForCastaway(castawayPerformance, seasonId)) {
             return 0;
         }
-        List<Boot> boots = bootRepository.findBySeasonId(seasonId);
-        int castawayMatches = 0;
-        int eventMatches = 0;
-        for (Boot boot : boots) {
-            if (!boot.getCastaway().getId().equals(castawayPerformance.getId())) {
-                continue;
-            }
-            castawayMatches++;
-            if (boot.getEvent() != null &&
+        return (int) bootRepository.findBySeasonId(seasonId).stream()
+                .filter(boot -> boot.getCastaway().getId().equals(castawayPerformance.getId()))
+                .filter(boot -> boot.getEvent() != null &&
                     (boot.getEvent().toLowerCase().equals("third")
                     || boot.getEvent().toLowerCase().equals("second")
-                    || boot.getEvent().toLowerCase().equals("first"))) {
-                eventMatches++;
-            }
-        }
-
-        debug("  [FINAL_THREE_BONUS] season=" + seasonId
-                + " total=" + boots.size()
-                + " castaway=" + castawayMatches
-                + " eventTop3=" + eventMatches);
-
-        return eventMatches;
+                    || boot.getEvent().toLowerCase().equals("first")))
+                .count();
     }
 
     private int countMedEvac(CastawayPerformance castawayPerformance, Integer seasonId) {
         if (!bootExistsForCastaway(castawayPerformance, seasonId)) {
             return 0;
         }
-        List<Boot> boots = bootRepository.findBySeasonId(seasonId);
-        int castawayMatches = 0;
-        int eventMatches = 0;
-        for (Boot boot : boots) {
-            if (!boot.getCastaway().getId().equals(castawayPerformance.getId())) {
-                continue;
-            }
-            castawayMatches++;
-            if (boot.getEvent() != null && boot.getEvent().toLowerCase().equals("medEvac")) {
-                eventMatches++;
-            }
-        }
-
-        debug("  [MED_EVAC] season=" + seasonId
-                + " total=" + boots.size()
-                + " castaway=" + castawayMatches
-                + " eventMedEvac=" + eventMatches);
-
-        return eventMatches;
+        return (int) bootRepository.findBySeasonId(seasonId).stream()
+                .filter(boot -> boot.getCastaway().getId().equals(castawayPerformance.getId()))
+                .filter(boot -> boot.getEvent() != null && boot.getEvent().toLowerCase().equalsIgnoreCase("medEvac"))
+                .count();
     }
 
     private int countQuit(CastawayPerformance castawayPerformance, Integer seasonId) {
         if (!bootExistsForCastaway(castawayPerformance, seasonId)) {
             return 0;
         }
-        List<Boot> boots = bootRepository.findBySeasonId(seasonId);
-        int castawayMatches = 0;
-        int eventMatches = 0;
-        for (Boot boot : boots) {
-            if (!boot.getCastaway().getId().equals(castawayPerformance.getId())) {
-                continue;
-            }
-            castawayMatches++;
-            if (boot.getEvent() != null && boot.getEvent().toLowerCase().equals("quit")) {
-                eventMatches++;
-            }
-        }
-
-        debug("  [QUIT] season=" + seasonId
-                + " total=" + boots.size()
-                + " castaway=" + castawayMatches
-                + " eventQuit=" + eventMatches);
-
-        return eventMatches;
-    }
-
-    private void debug(String message) {
-        if (DEBUG) {
-            System.out.println(message);
-        }
+        return (int) bootRepository.findBySeasonId(seasonId).stream()
+                .filter(boot -> boot.getCastaway().getId().equals(castawayPerformance.getId()))
+                .filter(boot -> boot.getEvent() != null && boot.getEvent().toLowerCase().equals("quit"))
+                .count();
     }
 }
