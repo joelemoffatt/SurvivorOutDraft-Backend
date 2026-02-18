@@ -32,7 +32,7 @@ public class GroupService {
     }
 
     public List<Group> getGroupsBySeasonId(int seasonId) {
-        return groupRepository.findBySeasonId(seasonId);
+        return groupRepository.findBySeasonSeason(seasonId);
     }
 
     public List<Group> getGroupsByUserId(int userId) {
