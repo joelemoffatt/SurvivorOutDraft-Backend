@@ -25,6 +25,14 @@ public class VoteService {
         ));
     }
 
+    public List<Vote> getVotesBySeasonAndEpisode(Integer seasonId, Integer episodeNumber) {
+        return voteRepository.findBySeasonAndEpisode(seasonId, episodeNumber);
+    }
+
+    public List<Vote> getVotesByEpisodeId(Integer episodeId) {
+        return voteRepository.findByEpisodeId(episodeId);
+    }
+
     public void insertVote(Vote vote) {
         voteRepository.save(vote);
     }

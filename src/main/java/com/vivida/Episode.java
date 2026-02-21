@@ -1,6 +1,7 @@
 package com.vivida;
 
 import jakarta.persistence.*;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 
 import lombok.AllArgsConstructor;
 import lombok.Getter;
@@ -33,22 +34,27 @@ public class Episode {
     private Integer episodeLength;
     @Column(nullable = false)
     private Boolean isFinale;
-    @Lob
+    @JsonIgnore
     @Column(columnDefinition = "TEXT")
     private String episodeSummary;
 
+    @JsonIgnore
     @OneToMany(mappedBy = "episode", cascade = CascadeType.ALL)
     private List<Journey> journeys;
 
+    @JsonIgnore
     @OneToMany(mappedBy = "episode", cascade = CascadeType.ALL)
     private List<AdvantageMovement> advantageMovements;
 
+    @JsonIgnore
     @OneToMany(mappedBy = "episode", cascade = CascadeType.ALL)
     private List<Challenge> challenges;
 
+    @JsonIgnore
     @OneToMany(mappedBy = "episode", cascade = CascadeType.ALL)
     private List<Tribal> tribals;
 
+    @JsonIgnore
     @OneToMany(mappedBy = "episode", cascade = CascadeType.ALL)
     private List<Boot> boots; // All boots in this episode (voted and non-voted)
 }

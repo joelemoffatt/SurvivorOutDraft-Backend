@@ -25,6 +25,10 @@ public class CastawayPerformanceService {
         ));
     }
 
+    public List<CastawayPerformance> getCastawayPerformancesBySeasonId(Integer seasonId) {
+        return castawayPerformanceRepository.findBySeasonId(seasonId);
+    }
+
     public void insertCastawayPerformance(CastawayPerformance castawayPerformance) {
         castawayPerformanceRepository.save(castawayPerformance);
     }

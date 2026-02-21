@@ -18,6 +18,7 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import org.springframework.http.HttpMethod;
 
 @Configuration
 @EnableWebSecurity
@@ -43,8 +44,16 @@ public class SecurityConfig {
     public SecurityFilterChain securityFilterChain(HttpSecurity http, JwtAuthenticationFilter jwtAuthFilter) throws Exception {
         http
                 .csrf(AbstractHttpConfigurer::disable)
+                .cors(cors -> {}) // Enable CORS with the configuration from CorsConfig
                 .authorizeHttpRequests(auth -> auth
+                        .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                         .requestMatchers("/api/v1/auth/**").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/v1/episodes/detail").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/v1/seasons/**").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/v1/episodes/**").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/v1/challenges/**").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/v1/votes/**").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/v1/castaways/**").permitAll()
                         .anyRequest().authenticated()
                 )
                 .sessionManagement(session -> session

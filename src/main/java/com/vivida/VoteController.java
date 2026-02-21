@@ -15,7 +15,14 @@ public class VoteController {
     }
 
     @GetMapping
-    public List<Vote> getVotes() {
+    public List<Vote> getVotes(
+            @RequestParam(required = false) Integer seasonId,
+            @RequestParam(required = false) Integer episodeNumber) {
+        if (seasonId != null && episodeNumber != null) {
+            return voteService.getVotesBySeasonAndEpisode(seasonId, episodeNumber);
+        } else if (episodeNumber != null) {
+            return voteService.getVotesByEpisodeId(episodeNumber);
+        }
         return voteService.getAllVotes();
     }
 

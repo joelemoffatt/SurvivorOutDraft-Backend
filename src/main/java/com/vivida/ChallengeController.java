@@ -15,7 +15,14 @@ public class ChallengeController {
     }
 
     @GetMapping
-    public List<Challenge> getChallenges() {
+    public List<Challenge> getChallenges(
+            @RequestParam(required = false) Integer seasonId,
+            @RequestParam(required = false) Integer episodeNumber) {
+        if (seasonId != null && episodeNumber != null) {
+            return challengeService.getChallengesBySeasonAndEpisode(seasonId, episodeNumber);
+        } else if (episodeNumber != null) {
+            return challengeService.getChallengesByEpisodeId(episodeNumber);
+        }
         return challengeService.getAllChallenges();
     }
 

@@ -1,5 +1,7 @@
 package com.vivida;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
@@ -17,16 +19,35 @@ public class Vote {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Integer id;
 
+    @JsonIgnore
     @ManyToOne
     @JoinColumn(name = "vote_round_id", nullable = false)
     private VoteRound voteRound;
 
+    @JsonIgnore
     @ManyToOne
     @JoinColumn(name = "castaway_id", nullable = false)
     private CastawayPerformance castaway;
 
+    @JsonIgnore
     @ManyToOne
     @JoinColumn(name = "voted_for_id", nullable = false)
     private CastawayPerformance votedFor;
+
     private Boolean nullified;
+
+    @JsonProperty("voteRoundId")
+    public Integer getVoteRoundId() {
+        return voteRound != null ? voteRound.getId() : null;
+    }
+
+    @JsonProperty("castawayId")
+    public Integer getCastawayId() {
+        return castaway != null ? castaway.getId() : null;
+    }
+
+    @JsonProperty("votedForId")
+    public Integer getVotedForId() {
+        return votedFor != null ? votedFor.getId() : null;
+    }
 }

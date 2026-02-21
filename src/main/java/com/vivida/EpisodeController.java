@@ -1,5 +1,6 @@
 package com.vivida;
 
+import com.vivida.dto.EpisodeDetailDto;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -15,8 +16,19 @@ public class EpisodeController {
     }
 
     @GetMapping
-    public List<Episode> getEpisodes() {
+    public List<Episode> getEpisodes(@RequestParam(required = false) Integer seasonId) {
+        if (seasonId != null) {
+            return episodeService.getEpisodesBySeasonId(seasonId);
+        }
         return episodeService.getAllEpisodes();
+    }
+
+    @GetMapping("detail")
+    public EpisodeDetailDto getEpisodeDetail(
+            @RequestParam Integer seasonId,
+            @RequestParam Integer episodeNumber
+    ) {
+        return episodeService.getEpisodeDetail(seasonId, episodeNumber);
     }
 
     @GetMapping("{id}")

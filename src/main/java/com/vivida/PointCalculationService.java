@@ -10,8 +10,10 @@ import java.util.List;
 public class PointCalculationService {
 
     private final ChallengePerformanceRepository challengePerformanceRepository;
+    @SuppressWarnings("unused")
     private final VoteRepository voteRepository;
     private final BootRepository bootRepository;
+    @SuppressWarnings("unused")
     private final JuryVoteRepository juryVoteRepository;
     private final AdvantageMovementRepository advantageMovementRepository;
     private final TribeMappingRepository tribeMappingRepository;

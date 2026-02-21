@@ -3,19 +3,28 @@ package com.vivida;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("api/v1/castaways")
 public class CastawayController {
 
-    private final CastawayService  castawayService;
+    private final CastawayService castawayService;
+    private final CastawayPerformanceService castawayPerformanceService;
 
-    public CastawayController(CastawayService castawayService) {
+    public CastawayController(CastawayService castawayService, CastawayPerformanceService castawayPerformanceService) {
         this.castawayService = castawayService;
+        this.castawayPerformanceService = castawayPerformanceService;
     }
 
     @GetMapping
-    public List<Castaway> getCastaways() {
+    public List<Castaway> getCastaways(@RequestParam(required = false) Integer seasonId) {
+        if (seasonId != null) {
+            List<CastawayPerformance> performances = castawayPerformanceService.getCastawayPerformancesBySeasonId(seasonId);
+            return performances.stream()
+                    .map(CastawayPerformance::getCastaway)
+                    .collect(Collectors.toList());
+        }
         return castawayService.getAllCastaways();
     }
 

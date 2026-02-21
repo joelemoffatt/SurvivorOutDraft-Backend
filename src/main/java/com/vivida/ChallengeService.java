@@ -25,6 +25,14 @@ public class ChallengeService {
         ));
     }
 
+    public List<Challenge> getChallengesBySeasonAndEpisode(Integer seasonId, Integer episodeNumber) {
+        return challengeRepository.findBySeasonAndEpisode(seasonId, episodeNumber);
+    }
+
+    public List<Challenge> getChallengesByEpisodeId(Integer episodeId) {
+        return challengeRepository.findByEpisodeId(episodeId);
+    }
+
     public void insertChallenge(Challenge challenge) {
         challengeRepository.save(challenge);
     }

@@ -61,13 +61,24 @@ public class DataLoader implements CommandLineRunner {
     private Map<String, Tribe> tribeByKeyCache = new HashMap<>();  // key: "seasonId:tribeName"
     private Map<Integer, Episode> episodeCache = new HashMap<>();
     private Map<String, CastawayPerformance> perfCache = new HashMap<>();  // key: "seasonNum:castawayId"
-    private Map<Integer, Challenge> challengeById = new HashMap<>();  // key: challenge_id
+    private Map<String, Challenge> challengeByKey = new HashMap<>();  // key: "seasonNum:challenge_id"
     private Map<String, Tribal> tribalByKey = new HashMap<>();  // key: "seasonNum:episodeNum:bootOrder"
 
     private List<Map<String, Object>> loadJsonFile(String filename) throws Exception {
         File file = new File(DATA_PATH + filename);
         if (!file.exists()) {
             System.out.println("⚠  " + filename + " not found");
+            return new ArrayList<>();
+        }
+        List<Map<String, Object>> data = mapper.readValue(file, mapper.getTypeFactory().constructCollectionType(List.class, Map.class));
+        return data;
+    }
+
+    private List<Map<String, Object>> loadJsonFileFromImport(String filename) throws Exception {
+        String importPath = "/Users/joelmoffatt/VSCode/SurvivorOutDraft/survivoR/data/import/";
+        File file = new File(importPath + filename);
+        if (!file.exists()) {
+            System.out.println("⚠  " + filename + " not found in import folder");
             return new ArrayList<>();
         }
         List<Map<String, Object>> data = mapper.readValue(file, mapper.getTypeFactory().constructCollectionType(List.class, Map.class));
@@ -101,8 +112,12 @@ public class DataLoader implements CommandLineRunner {
             loadEpisodes();
             episodeRepository.findAll().forEach(e -> episodeCache.put(e.getId(), e));
             
+            updateSeasonEpisodeCounts();
+            
             loadChallenges();
-            challengeRepository.findAll().forEach(c -> challengeById.put(c.getChallenge_id(), c));
+            challengeRepository.findAll().forEach(c ->
+                challengeByKey.put(c.getSeason().getSeason() + ":" + c.getChallenge_id(), c)
+            );
             loadTribal();
             tribalRepository.findAll().forEach(t -> 
                 tribalByKey.put(t.getEpisode().getSeason().getSeason() + ":" + t.getEpisode().getEpisodeNumber() + ":" + t.getBootOrder(), t));
@@ -150,6 +165,15 @@ public class DataLoader implements CommandLineRunner {
     
     private void clearAllData() {
         System.out.println("Clearing all existing data...");
+        // Clear user/group/team related data first (due to foreign keys)
+        teamCastawayRepository.deleteAll();
+        teamRepository.deleteAll();
+        pointRuleRepository.deleteAll();
+        groupMemberRepository.deleteAll();
+        groupRepository.deleteAll();
+        userRepository.deleteAll();
+        
+        // Clear survivor data
         advantageMovementRepository.deleteAll();
         bootRepository.deleteAll();
         journeyRepository.deleteAll();
@@ -193,12 +217,37 @@ public class DataLoader implements CommandLineRunner {
         if (data.isEmpty()) return;
 
         System.out.println("Loading Seasons...");
+        
+        // Load season summary data for enrichment
+        List<Map<String, Object>> summaryData = loadJsonFileFromImport("season_summary.json");
+        Map<Integer, Map<String, Object>> summaryBySeasonNum = new HashMap<>();
+        for (Map<String, Object> summary : summaryData) {
+            Integer seasonNum = getInt(summary, "season");
+            summaryBySeasonNum.put(seasonNum, summary);
+        }
+        
         List<Season> seasons = new ArrayList<>();
         for (Map<String, Object> item : data) {
             Season season = new Season();
             Integer seasonNum = getInt(item, "season");
             season.setSeason(seasonNum);
             season.setVersion(getString(item, "version"));
+            
+            // Enrich with summary data if available
+            if (summaryBySeasonNum.containsKey(seasonNum)) {
+                Map<String, Object> summary = summaryBySeasonNum.get(seasonNum);
+                season.setSeasonName(getString(summary, "season_name"));
+                season.setLocation(getString(summary, "location"));
+                season.setCountry(getString(summary, "country"));
+                season.setTribeSetup(getString(summary, "tribe_setup"));
+                season.setFullName(getString(summary, "full_name"));
+                season.setFilmingStarted(getString(summary, "filming_started"));
+                season.setFilmingEnded(getString(summary, "filming_ended"));
+                season.setPremiereDate(getString(summary, "premiered"));
+                season.setEndingDate(getString(summary, "ended"));
+                season.setViewers(getInt(summary, "viewers_mean"));
+            }
+            
             seasons.add(season);
         }
         saveInBatches(seasons, "seasons");
@@ -326,6 +375,17 @@ public class DataLoader implements CommandLineRunner {
         saveInBatches(episodes, "episodes");
     }
 
+    private void updateSeasonEpisodeCounts() {
+        System.out.println("Updating season episode counts...");
+        List<Season> seasons = seasonRepository.findAll();
+        for (Season season : seasons) {
+            long episodeCount = episodeRepository.findBySeasonId(season.getSeason()).size();
+            season.setEpisodesNumber((int) episodeCount);
+            seasonRepository.save(season);
+        }
+        System.out.println("✓ Updated episode counts for " + seasons.size() + " seasons\n");
+    }
+
     private void loadChallenges() throws Exception {
         List<Map<String, Object>> data = loadJsonFile("challenge.json");
         if (data.isEmpty()) return;
@@ -429,7 +489,7 @@ public class DataLoader implements CommandLineRunner {
             String castawayId = getString(item, "castaway_id");
             Integer seasonNum = getInt(item, "season");
             
-            Challenge challenge = challengeById.getOrDefault(challengeId, null);
+            Challenge challenge = challengeByKey.getOrDefault(seasonNum + ":" + challengeId, null);
             if (challenge == null) {
                 challengeFails++;
                 System.out.println("  ⚠ ChallengePerformance: Challenge not found - challenge_id=" + challengeId);
@@ -776,15 +836,15 @@ public class DataLoader implements CommandLineRunner {
         System.out.println("Seeding test group, users, teams, and point rules...");
 
         List<User> users = new ArrayList<>();
-        for (int i = 1; i <= 3; i++) {
-            String username = "testuser" + i;
-            String email = "testuser" + i + "@example.com";
+        String[] usernames = {"blue", "red", "yellow", "green"};
+        for (String username : usernames) {
+            String email = username + "@example.com";
             User user = userRepository.findByUsername(username).orElse(null);
             if (user == null) {
                 user = new User();
                 user.setUsername(username);
                 user.setEmail(email);
-                user.setPassword(passwordEncoder.encode("password"));
+                user.setPassword(passwordEncoder.encode("123"));
                 user.setRole(Role.USER);
                 user.setEnabled(true);
                 userRepository.save(user);
