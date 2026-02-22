@@ -1,0 +1,15 @@
+package com.vivida.scoring;
+
+public enum RuleType {
+    INDIVIDUAL_IMMUNITY,
+    FOUND_IDOL,
+    FOUND_ADVANTAGE,
+    PLAYED_IDOL_SUCCESSFULLY,
+    PLAYED_ADVANTAGE_SUCCESSFULLY,
+    SOLE_SURVIVOR,
+    RUNNER_UP,
+    FINAL_THREE_BONUS,
+    MADE_MERGE,
+    MED_EVAC,
+    QUIT
+}
