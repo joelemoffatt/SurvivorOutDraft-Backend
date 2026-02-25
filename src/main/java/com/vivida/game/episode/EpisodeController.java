@@ -15,11 +15,15 @@ public class EpisodeController {
     }
 
     @GetMapping
-    public List<Episode> getEpisodes(@RequestParam(required = false) Integer seasonId) {
+    public List<EpisodeDTO> getEpisodes(@RequestParam(required = false) Integer seasonId) {
         if (seasonId != null) {
-            return episodeService.getEpisodesBySeasonId(seasonId);
+            return episodeService.getEpisodesBySeasonId(seasonId).stream()
+                    .map(EpisodeDTO::new)
+                    .toList();
         }
-        return episodeService.getAllEpisodes();
+        return episodeService.getAllEpisodes().stream()
+                .map(EpisodeDTO::new)
+                .toList();
     }
 
     @GetMapping("detail")
@@ -31,8 +35,8 @@ public class EpisodeController {
     }
 
     @GetMapping("{id}")
-    public Episode getEpisodeById(@PathVariable Integer id) {
-        return episodeService.getEpisodeById(id);
+    public EpisodeDTO getEpisodeById(@PathVariable Integer id) {
+        return new EpisodeDTO(episodeService.getEpisodeById(id));
     }
 
     @PostMapping

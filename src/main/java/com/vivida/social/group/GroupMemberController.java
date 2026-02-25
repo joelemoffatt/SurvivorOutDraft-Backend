@@ -17,30 +17,36 @@ public class GroupMemberController {
     }
 
     @GetMapping
-    public List<GroupMember> getGroupMembers() {
-        return groupMemberService.getAllGroupMembers();
+    public List<GroupMemberDTO> getGroupMembers() {
+        return groupMemberService.getAllGroupMembers().stream()
+                .map(GroupMemberDTO::new)
+                .toList();
     }
 
     @GetMapping("{id}")
-    public GroupMember getGroupMemberById(@PathVariable Integer id) {
-        return groupMemberService.getGroupMemberById(id);
+    public GroupMemberDTO getGroupMemberById(@PathVariable Integer id) {
+        return new GroupMemberDTO(groupMemberService.getGroupMemberById(id));
     }
 
     @GetMapping("group/{groupId}")
-    public List<GroupMember> getGroupMembersByGroupId(@PathVariable Integer groupId) {
-        return groupMemberService.getGroupMembersByGroupId(groupId);
+    public List<GroupMemberDTO> getGroupMembersByGroupId(@PathVariable Integer groupId) {
+        return groupMemberService.getGroupMembersByGroupId(groupId).stream()
+                .map(GroupMemberDTO::new)
+                .toList();
     }
 
     @GetMapping("user/{userId}")
-    public List<GroupMember> getGroupMembersByUserId(@PathVariable Integer userId) {
-        return groupMemberService.getGroupMembersByUserId(userId);
+    public List<GroupMemberDTO> getGroupMembersByUserId(@PathVariable Integer userId) {
+        return groupMemberService.getGroupMembersByUserId(userId).stream()
+                .map(GroupMemberDTO::new)
+                .toList();
     }
 
     @GetMapping("group/{groupId}/user/{userId}")
-    public GroupMember getGroupMemberByGroupAndUser(
+    public GroupMemberDTO getGroupMemberByGroupAndUser(
             @PathVariable Integer groupId,
             @PathVariable Integer userId) {
-        return groupMemberService.getGroupMemberByGroupAndUser(groupId, userId);
+        return new GroupMemberDTO(groupMemberService.getGroupMemberByGroupAndUser(groupId, userId));
     }
 
     @PostMapping
@@ -60,3 +66,4 @@ public class GroupMemberController {
         groupMemberService.deleteGroupMemberById(id);
     }
 }
+

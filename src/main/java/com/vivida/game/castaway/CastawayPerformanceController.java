@@ -15,13 +15,15 @@ public class CastawayPerformanceController {
     }
 
     @GetMapping
-    public List<CastawayPerformance> getCastawayPerformances() {
-        return castawayPerformanceService.getAllCastawayPerformances();
+    public List<CastawayPerformanceDTO> getCastawayPerformances() {
+        return castawayPerformanceService.getAllCastawayPerformances().stream()
+                .map(CastawayPerformanceDTO::new)
+                .toList();
     }
 
     @GetMapping("{id}")
-    public CastawayPerformance getCastawayPerformanceById(@PathVariable Integer id) {
-        return castawayPerformanceService.getCastawayPerformanceById(id);
+    public CastawayPerformanceDTO getCastawayPerformanceById(@PathVariable Integer id) {
+        return new CastawayPerformanceDTO(castawayPerformanceService.getCastawayPerformanceById(id));
     }
 
     @PostMapping

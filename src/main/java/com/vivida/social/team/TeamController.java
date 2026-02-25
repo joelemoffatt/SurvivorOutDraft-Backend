@@ -15,30 +15,36 @@ public class TeamController {
     }
 
     @GetMapping
-    public List<Team> getTeams() {
-        return teamService.getAllTeams();
+    public List<TeamDTO> getTeams() {
+        return teamService.getAllTeams().stream()
+                .map(TeamDTO::new)
+                .toList();
     }
 
     @GetMapping("{id}")
-    public Team getTeamById(@PathVariable Integer id) {
-        return teamService.getTeamById(id);
+    public TeamDTO getTeamById(@PathVariable Integer id) {
+        return new TeamDTO(teamService.getTeamById(id));
     }
 
     @GetMapping("group/{groupId}")
-    public List<Team> getTeamsByGroupId(@PathVariable Integer groupId) {
-        return teamService.getTeamsByGroupId(groupId);
+    public List<TeamDTO> getTeamsByGroupId(@PathVariable Integer groupId) {
+        return teamService.getTeamsByGroupId(groupId).stream()
+                .map(TeamDTO::new)
+                .toList();
     }
 
     @GetMapping("user/{userId}")
-    public List<Team> getTeamsByUserId(@PathVariable Integer userId) {
-        return teamService.getTeamsByUserId(userId);
+    public List<TeamDTO> getTeamsByUserId(@PathVariable Integer userId) {
+        return teamService.getTeamsByUserId(userId).stream()
+                .map(TeamDTO::new)
+                .toList();
     }
 
     @GetMapping("group/{groupId}/user/{userId}")
-    public Team getTeamByGroupAndUser(
+    public TeamDTO getTeamByGroupAndUser(
             @PathVariable Integer groupId,
             @PathVariable Integer userId) {
-        return teamService.getTeamByGroupAndUser(groupId, userId);
+        return new TeamDTO(teamService.getTeamByGroupAndUser(groupId, userId));
     }
 
     @PostMapping
@@ -61,3 +67,4 @@ public class TeamController {
         teamService.deleteTeamById(id);
     }
 }
+

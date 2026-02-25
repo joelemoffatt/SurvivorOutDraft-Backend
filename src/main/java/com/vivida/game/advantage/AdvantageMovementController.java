@@ -15,13 +15,15 @@ public class AdvantageMovementController {
     }
 
     @GetMapping
-    public List<AdvantageMovement> getAdvantageMovements() {
-        return advantageMovementService.getAllAdvantageMovements();
+    public List<AdvantageMovementDTO> getAdvantageMovements() {
+        return advantageMovementService.getAllAdvantageMovements().stream()
+                .map(AdvantageMovementDTO::new)
+                .toList();
     }
 
     @GetMapping("{id}")
-    public AdvantageMovement getAdvantageMovementById(@PathVariable Integer id) {
-        return advantageMovementService.getAdvantageMovementById(id);
+    public AdvantageMovementDTO getAdvantageMovementById(@PathVariable Integer id) {
+        return new AdvantageMovementDTO(advantageMovementService.getAdvantageMovementById(id));
     }
 
     @PostMapping

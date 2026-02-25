@@ -15,18 +15,22 @@ public class TeamCastawayController {
     }
 
     @GetMapping
-    public List<TeamCastaway> getTeamCastaways() {
-        return teamCastawayService.getAllTeamCastaways();
+    public List<TeamCastawayDTO> getTeamCastaways() {
+        return teamCastawayService.getAllTeamCastaways().stream()
+                .map(TeamCastawayDTO::new)
+                .toList();
     }
 
     @GetMapping("{id}")
-    public TeamCastaway getTeamCastawayById(@PathVariable Integer id) {
-        return teamCastawayService.getTeamCastawayById(id);
+    public TeamCastawayDTO getTeamCastawayById(@PathVariable Integer id) {
+        return new TeamCastawayDTO(teamCastawayService.getTeamCastawayById(id));
     }
 
     @GetMapping("team/{teamId}")
-    public List<TeamCastaway> getTeamCastawaysByTeamId(@PathVariable Integer teamId) {
-        return teamCastawayService.getTeamCastawaysByTeamId(teamId);
+    public List<TeamCastawayDTO> getTeamCastawaysByTeamId(@PathVariable Integer teamId) {
+        return teamCastawayService.getTeamCastawaysByTeamId(teamId).stream()
+                .map(TeamCastawayDTO::new)
+                .toList();
     }
 
     @PostMapping

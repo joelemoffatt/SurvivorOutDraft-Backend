@@ -862,9 +862,14 @@ public class DataLoader implements CommandLineRunner {
     }
 
     private void seedPointCalcTestData() {
-        String groupName = "Point Calc Test Group";
+        seedGroupForSeason(49, "Jeff Probst Fan Club");
+        seedGroupForSeason(48, "Survivor Season 48 League");
+        seedGroupForSeason(47, "47 Degrees of Separation");
+    }
+
+    private void seedGroupForSeason(Integer seasonNum, String groupName) {
         if (groupRepository.findByName(groupName).isPresent()) {
-            System.out.println("✓ Test group already exists, skipping seed data\n");
+            System.out.println("✓ Test group already exists for " + groupName + ", skipping seed data\n");
             return;
         }
 
@@ -873,15 +878,13 @@ public class DataLoader implements CommandLineRunner {
             return;
         }
 
-        Integer seasonNum = 49;
-
         Season season = seasonCache.get(seasonNum);
         if (season == null) {
-            System.out.println("⚠  Season not found for test group\n");
+            System.out.println("⚠  Season " + seasonNum + " not found for test group\n");
             return;
         }
 
-        System.out.println("Seeding test group, users, teams, and point rules...");
+        System.out.println("Seeding test group for Season " + seasonNum + ": " + groupName + "...");
 
         List<User> users = new ArrayList<>();
         String[] usernames = {"blue", "red", "yellow", "green"};
@@ -964,7 +967,7 @@ public class DataLoader implements CommandLineRunner {
             pointCalculationService.calculateAndUpdateTeamPoints(team.getId());
         }
 
-        System.out.println("✓ Test group seeded. Final team points:");
+        System.out.println("✓ Test group seeded for Season " + seasonNum + ": " + groupName + ". Final team points:");
         for (Team team : teams) {
             Team updatedTeam = teamRepository.findById(team.getId()).orElse(team);
             System.out.println("  " + updatedTeam.getTeamName() + ": " + updatedTeam.getTotalPoints());

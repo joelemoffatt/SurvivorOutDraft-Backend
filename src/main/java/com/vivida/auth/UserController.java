@@ -15,23 +15,25 @@ public class UserController {
     }
 
     @GetMapping
-    public List<User> getUsers() {
-        return userService.getAllUsers();
+    public List<UserDTO> getUsers() {
+        return userService.getAllUsers().stream()
+                .map(UserDTO::new)
+                .toList();
     }
 
     @GetMapping("{id}")
-    public User getUserById(@PathVariable Integer id) {
-        return userService.getUserById(id);
+    public UserDTO getUserById(@PathVariable Integer id) {
+        return new UserDTO(userService.getUserById(id));
     }
 
     @GetMapping("username/{username}")
-    public User getUserByUsername(@PathVariable String username) {
-        return userService.getUserByUsername(username);
+    public UserDTO getUserByUsername(@PathVariable String username) {
+        return new UserDTO(userService.getUserByUsername(username));
     }
 
     @GetMapping("email/{email}")
-    public User getUserByEmail(@PathVariable String email) {
-        return userService.getUserByEmail(email);
+    public UserDTO getUserByEmail(@PathVariable String email) {
+        return new UserDTO(userService.getUserByEmail(email));
     }
 
     @PostMapping

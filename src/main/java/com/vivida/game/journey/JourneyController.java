@@ -15,13 +15,15 @@ public class JourneyController {
     }
 
     @GetMapping
-    public List<Journey> getJourneys() {
-        return journeyService.getAllJourneys();
+    public List<JourneyDTO> getJourneys() {
+        return journeyService.getAllJourneys().stream()
+                .map(JourneyDTO::new)
+                .toList();
     }
 
     @GetMapping("{id}")
-    public Journey getJourneyById(@PathVariable Integer id) {
-        return journeyService.getJourneyById(id);
+    public JourneyDTO getJourneyById(@PathVariable Integer id) {
+        return new JourneyDTO(journeyService.getJourneyById(id));
     }
 
     @PostMapping

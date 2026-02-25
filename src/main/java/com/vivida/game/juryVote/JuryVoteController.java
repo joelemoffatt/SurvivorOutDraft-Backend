@@ -15,13 +15,15 @@ public class JuryVoteController {
     }
 
     @GetMapping
-    public List<JuryVote> getJuryVotes() {
-        return juryVoteService.getAllJuryVotes();
+    public List<JuryVoteDTO> getJuryVotes() {
+        return juryVoteService.getAllJuryVotes().stream()
+                .map(JuryVoteDTO::new)
+                .toList();
     }
 
     @GetMapping("{id}")
-    public JuryVote getJuryVoteById(@PathVariable Integer id) {
-        return juryVoteService.getJuryVoteById(id);
+    public JuryVoteDTO getJuryVoteById(@PathVariable Integer id) {
+        return new JuryVoteDTO(juryVoteService.getJuryVoteById(id));
     }
 
     @PostMapping

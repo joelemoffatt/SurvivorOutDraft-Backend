@@ -15,13 +15,15 @@ public class ChallengePerformanceController {
     }
 
     @GetMapping
-    public List<ChallengePerformance> getChallengePerformances() {
-        return challengePerformanceService.getAllChallengePerformances();
+    public List<ChallengePerformanceDTO> getChallengePerformances() {
+        return challengePerformanceService.getAllChallengePerformances().stream()
+                .map(ChallengePerformanceDTO::new)
+                .toList();
     }
 
     @GetMapping("{id}")
-    public ChallengePerformance getChallengePerformanceById(@PathVariable Integer id) {
-        return challengePerformanceService.getChallengePerformanceById(id);
+    public ChallengePerformanceDTO getChallengePerformanceById(@PathVariable Integer id) {
+        return new ChallengePerformanceDTO(challengePerformanceService.getChallengePerformanceById(id));
     }
 
     @PostMapping

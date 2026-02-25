@@ -15,13 +15,15 @@ public class BootController {
     }
 
     @GetMapping
-    public List<Boot> getBoots() {
-        return bootService.getAllBoots();
+    public List<BootDTO> getBoots() {
+        return bootService.getAllBoots().stream()
+                .map(BootDTO::new)
+                .toList();
     }
 
     @GetMapping("{id}")
-    public Boot getBootById(@PathVariable Integer id) {
-        return bootService.getBootById(id);
+    public BootDTO getBootById(@PathVariable Integer id) {
+        return new BootDTO(bootService.getBootById(id));
     }
 
     @PostMapping

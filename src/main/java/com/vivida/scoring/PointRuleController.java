@@ -15,23 +15,29 @@ public class PointRuleController {
     }
 
     @GetMapping
-    public List<PointRule> getPointRules() {
-        return pointRuleService.getAllPointRules();
+    public List<PointRuleDTO> getPointRules() {
+        return pointRuleService.getAllPointRules().stream()
+                .map(PointRuleDTO::new)
+                .toList();
     }
 
     @GetMapping("{id}")
-    public PointRule getPointRuleById(@PathVariable Integer id) {
-        return pointRuleService.getPointRuleById(id);
+    public PointRuleDTO getPointRuleById(@PathVariable Integer id) {
+        return new PointRuleDTO(pointRuleService.getPointRuleById(id));
     }
 
     @GetMapping("group/{groupId}")
-    public List<PointRule> getPointRulesByGroupId(@PathVariable Integer groupId) {
-        return pointRuleService.getPointRulesByGroupId(groupId);
+    public List<PointRuleDTO> getPointRulesByGroupId(@PathVariable Integer groupId) {
+        return pointRuleService.getPointRulesByGroupId(groupId).stream()
+                .map(PointRuleDTO::new)
+                .toList();
     }
 
     @GetMapping("group/{groupId}/active")
-    public List<PointRule> getActivePointRulesByGroupId(@PathVariable Integer groupId) {
-        return pointRuleService.getActivePointRulesByGroupId(groupId);
+    public List<PointRuleDTO> getActivePointRulesByGroupId(@PathVariable Integer groupId) {
+        return pointRuleService.getActivePointRulesByGroupId(groupId).stream()
+                .map(PointRuleDTO::new)
+                .toList();
     }
 
     @PostMapping

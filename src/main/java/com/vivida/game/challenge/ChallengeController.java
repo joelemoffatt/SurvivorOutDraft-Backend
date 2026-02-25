@@ -15,20 +15,26 @@ public class ChallengeController {
     }
 
     @GetMapping
-    public List<Challenge> getChallenges(
+    public List<ChallengeDTO> getChallenges(
             @RequestParam(required = false) Integer seasonId,
             @RequestParam(required = false) Integer episodeNumber) {
         if (seasonId != null && episodeNumber != null) {
-            return challengeService.getChallengesBySeasonAndEpisode(seasonId, episodeNumber);
+            return challengeService.getChallengesBySeasonAndEpisode(seasonId, episodeNumber).stream()
+                    .map(ChallengeDTO::new)
+                    .toList();
         } else if (episodeNumber != null) {
-            return challengeService.getChallengesByEpisodeId(episodeNumber);
+            return challengeService.getChallengesByEpisodeId(episodeNumber).stream()
+                    .map(ChallengeDTO::new)
+                    .toList();
         }
-        return challengeService.getAllChallenges();
+        return challengeService.getAllChallenges().stream()
+                .map(ChallengeDTO::new)
+                .toList();
     }
 
     @GetMapping("{id}")
-    public Challenge getChallengeById(@PathVariable Integer id) {
-        return challengeService.getChallengeById(id);
+    public ChallengeDTO getChallengeById(@PathVariable Integer id) {
+        return new ChallengeDTO(challengeService.getChallengeById(id));
     }
 
     @PostMapping

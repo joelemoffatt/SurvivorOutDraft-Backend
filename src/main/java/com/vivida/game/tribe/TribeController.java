@@ -15,13 +15,15 @@ public class TribeController {
     }
 
     @GetMapping
-    public List<Tribe> getTribes() {
-        return tribeService.getAllTribes();
+    public List<TribeDTO> getTribes() {
+        return tribeService.getAllTribes().stream()
+                .map(TribeDTO::new)
+                .toList();
     }
 
     @GetMapping("{id}")
-    public Tribe getTribeById(@PathVariable Integer id) {
-        return tribeService.getTribeById(id);
+    public TribeDTO getTribeById(@PathVariable Integer id) {
+        return new TribeDTO(tribeService.getTribeById(id));
     }
 
     @PostMapping

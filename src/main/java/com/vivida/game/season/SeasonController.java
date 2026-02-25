@@ -15,13 +15,15 @@ public class SeasonController {
     }
 
     @GetMapping
-    public List<Season> getSeasons() {
-        return seasonService.getAllSeasons();
+    public List<SeasonDTO> getSeasons() {
+        return seasonService.getAllSeasons().stream()
+                .map(SeasonDTO::new)
+                .toList();
     }
 
     @GetMapping("{id}")
-    public Season getSeasonById(@PathVariable Integer id) {
-        return seasonService.getSeasonById(id);
+    public SeasonDTO getSeasonById(@PathVariable Integer id) {
+        return new SeasonDTO(seasonService.getSeasonById(id));
     }
 
     @PostMapping
