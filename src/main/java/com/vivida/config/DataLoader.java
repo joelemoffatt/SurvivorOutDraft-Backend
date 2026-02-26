@@ -53,6 +53,7 @@ import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.CommandLineRunner;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -61,8 +62,11 @@ import java.io.File;
 import java.time.LocalDateTime;
 import java.util.*;
 
+@ConditionalOnProperty(name = "vivida.dataloader.enabled", havingValue = "true")
 @Component
 public class DataLoader implements CommandLineRunner {
+    // Map vote_round_id to (season, episode, boot_order, vote_order)
+    private final Map<Integer, String> voteRoundIdToKey = new HashMap<>();
 
     @Autowired private SeasonRepository seasonRepository;
     @Autowired private CastawayRepository castawayRepository;
@@ -639,6 +643,9 @@ public class DataLoader implements CommandLineRunner {
         System.out.println("✓ Loaded " + mappings.size() + " tribe mappings (season=" + seasonFails + ", episode=" + episodeFails + ", castaway=" + castawayFails + ", perf=" + perfFails + ", tribe=" + tribeFails + ")\n");
     }
 
+    // Map for fast lookup: season:episode:bootOrder:voteOrder -> VoteRound
+    private final Map<String, VoteRound> voteRoundByKey = new HashMap<>();
+
     private void loadVoteRounds() throws Exception {
         List<Map<String, Object>> data = loadJsonFile("voteRound.json");
         if (data.isEmpty()) return;
@@ -650,10 +657,12 @@ public class DataLoader implements CommandLineRunner {
             Integer seasonNum = getInt(item, "season");
             Integer episodeNum = getInt(item, "episode");
             Integer bootOrder = getInt(item, "boot_order");
-            
+            Integer voteOrder = getInt(item, "vote_order");
+            Integer id = getInt(item, "id");
+
             Season season = seasonCache.get(seasonNum);
             if (season == null) continue;
-            
+
             String tribalKey = seasonNum + ":" + episodeNum + ":" + bootOrder;
             Tribal tribal = tribalByKey.get(tribalKey);
             if (tribal == null) {
@@ -661,12 +670,19 @@ public class DataLoader implements CommandLineRunner {
                 System.out.println("  ⚠ VoteRound: Tribal not found - season=" + seasonNum + ", episode=" + episodeNum + ", bootOrder=" + bootOrder);
                 continue;
             }
-            
+
             VoteRound voteRound = new VoteRound();
             voteRound.setTribal(tribal);
             voteRound.setIsTie(getBoolean(item, "is_tie"));
-            voteRound.setVoteOrder(getInt(item, "vote_order"));
+            voteRound.setVoteOrder(voteOrder);
             voteRounds.add(voteRound);
+
+            // Map for lookup by season:episode:bootOrder:voteOrder
+            String voteRoundKey = seasonNum + ":" + episodeNum + ":" + bootOrder + ":" + voteOrder;
+            voteRoundByKey.put(voteRoundKey, voteRound);
+            if (id != null) {
+                voteRoundIdToKey.put(id, voteRoundKey);
+            }
         }
         voteRoundRepository.saveAll(voteRounds);
         totalTribalFails += tribalFails;
@@ -679,25 +695,42 @@ public class DataLoader implements CommandLineRunner {
 
         System.out.println("Loading Votes...");
         List<Vote> votes = new ArrayList<>();
+        int skippedVoteRound = 0;
+        int skippedCastaway = 0;
+        int skippedVotedFor = 0;
         for (Map<String, Object> item : data) {
             Integer voteRoundId = getInt(item, "vote_round_id");
-            if (voteRoundId == null) {
-                System.out.println("⚠  Skipping vote: vote_round_id field missing");
+            String voteRoundKey = voteRoundIdToKey.get(voteRoundId);
+            if (voteRoundKey == null) {
+                System.out.println("⚠  Skipping vote: voteRoundId " + voteRoundId + " not found in voteRoundIdToKey map");
+                skippedVoteRound++;
                 continue;
             }
-            
-            VoteRound voteRound = voteRoundRepository.findById(voteRoundId).orElse(null);
-            if (voteRound == null) continue;
+            VoteRound voteRound = voteRoundByKey.get(voteRoundKey);
+            if (voteRound == null) {
+                System.out.println("⚠  Skipping vote: voteRound not found for key " + voteRoundKey);
+                skippedVoteRound++;
+                continue;
+            }
 
             String castawayId = getString(item, "castaway_id");
             String votedForId = getString(item, "voted_for_id");
             Season season = voteRound.getTribal().getEpisode().getSeason();
-            Integer seasonNum = season.getSeason();
-            
-            CastawayPerformance castawayPerf = perfCache.get(seasonNum + ":" + castawayId);
-            CastawayPerformance votedForPerf = perfCache.get(seasonNum + ":" + votedForId);
-            if (castawayPerf == null || votedForPerf == null) continue;
-            
+            Integer seasonNum2 = season.getSeason();
+
+            CastawayPerformance castawayPerf = perfCache.get(seasonNum2 + ":" + castawayId);
+            if (castawayPerf == null) {
+                System.out.println("⚠  Skipping vote: castawayPerf not found for season=" + seasonNum2 + ", castaway_id=" + castawayId);
+                skippedCastaway++;
+                continue;
+            }
+            CastawayPerformance votedForPerf = perfCache.get(seasonNum2 + ":" + votedForId);
+            if (votedForPerf == null) {
+                System.out.println("⚠  Skipping vote: votedForPerf not found for season=" + seasonNum2 + ", voted_for_id=" + votedForId);
+                skippedVotedFor++;
+                continue;
+            }
+
             Vote vote = new Vote();
             vote.setVoteRound(voteRound);
             vote.setCastaway(castawayPerf);
@@ -707,6 +740,7 @@ public class DataLoader implements CommandLineRunner {
         }
         voteRepository.saveAll(votes);
         System.out.println("✓ Loaded " + votes.size() + " votes\n");
+        System.out.println("Skipped votes: " + skippedVoteRound + " (vote_round_id), " + skippedCastaway + " (castaway_id), " + skippedVotedFor + " (voted_for_id)\n");
     }
 
     private void loadJuryVotes() throws Exception {
