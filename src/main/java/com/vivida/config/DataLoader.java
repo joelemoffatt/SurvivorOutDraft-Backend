@@ -218,29 +218,34 @@ public class DataLoader implements CommandLineRunner {
     private void clearAllData() {
         System.out.println("Clearing all existing data...");
         // Clear user/group/team related data first (due to foreign keys)
-        teamCastawayRepository.deleteAll();
-        teamRepository.deleteAll();
-        pointRuleRepository.deleteAll();
-        groupMemberRepository.deleteAll();
-        groupRepository.deleteAll();
-        userRepository.deleteAll();
+        teamCastawayRepository.deleteAllInBatch();
+        entityManager.flush();
+        teamRepository.deleteAllInBatch();
+        entityManager.flush();
+        pointRuleRepository.deleteAllInBatch();
+        groupMemberRepository.deleteAllInBatch();
+        entityManager.flush();
+        groupRepository.deleteAllInBatch();
+        entityManager.flush();
+        userRepository.deleteAllInBatch();
+        entityManager.flush();
         
         // Clear survivor data
-        advantageMovementRepository.deleteAll();
-        bootRepository.deleteAll();
-        journeyRepository.deleteAll();
-        juryVoteRepository.deleteAll();
-        voteRepository.deleteAll();
-        voteRoundRepository.deleteAll();
-        tribeMappingRepository.deleteAll();
-        challengePerformanceRepository.deleteAll();
-        challengeRepository.deleteAll();
-        tribalRepository.deleteAll();
-        castawayPerformanceRepository.deleteAll();
-        episodeRepository.deleteAll();
-        tribeRepository.deleteAll();
-        castawayRepository.deleteAll();
-        seasonRepository.deleteAll();
+        advantageMovementRepository.deleteAllInBatch();
+        bootRepository.deleteAllInBatch();
+        journeyRepository.deleteAllInBatch();
+        juryVoteRepository.deleteAllInBatch();
+        voteRepository.deleteAllInBatch();
+        voteRoundRepository.deleteAllInBatch();
+        tribeMappingRepository.deleteAllInBatch();
+        challengePerformanceRepository.deleteAllInBatch();
+        challengeRepository.deleteAllInBatch();
+        tribalRepository.deleteAllInBatch();
+        castawayPerformanceRepository.deleteAllInBatch();
+        episodeRepository.deleteAllInBatch();
+        tribeRepository.deleteAllInBatch();
+        castawayRepository.deleteAllInBatch();
+        seasonRepository.deleteAllInBatch();
         entityManager.flush();
         System.out.println("✓ All data cleared\n");
     }

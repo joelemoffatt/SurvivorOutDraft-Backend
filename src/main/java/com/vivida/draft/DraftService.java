@@ -7,6 +7,7 @@ import com.vivida.auth.User;
 import com.vivida.game.castaway.CastawayPerformance;
 import com.vivida.game.castaway.CastawayPerformanceDTO;
 import com.vivida.game.castaway.CastawayPerformanceRepository;
+import com.vivida.scoring.PointCalculationService;
 import com.vivida.social.group.*;
 import com.vivida.social.team.*;
 import org.springframework.http.HttpStatus;
@@ -27,18 +28,21 @@ public class DraftService {
     private final TeamRepository teamRepository;
     private final TeamCastawayRepository teamCastawayRepository;
     private final CastawayPerformanceRepository castawayPerformanceRepository;
+    private final PointCalculationService pointCalculationService;
     private final ObjectMapper objectMapper;
 
     public DraftService(GroupRepository groupRepository,
                        GroupMemberRepository groupMemberRepository,
                        TeamRepository teamRepository,
                        TeamCastawayRepository teamCastawayRepository,
-                       CastawayPerformanceRepository castawayPerformanceRepository) {
+                       CastawayPerformanceRepository castawayPerformanceRepository,
+                       PointCalculationService pointCalculationService) {
         this.groupRepository = groupRepository;
         this.groupMemberRepository = groupMemberRepository;
         this.teamRepository = teamRepository;
         this.teamCastawayRepository = teamCastawayRepository;
         this.castawayPerformanceRepository = castawayPerformanceRepository;
+        this.pointCalculationService = pointCalculationService;
         this.objectMapper = new ObjectMapper();
     }
 
@@ -313,13 +317,21 @@ public class DraftService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Castaway is not from this season");
         }
 
-        // Validate castaway not already drafted (unless reactivation has occurred)
-        if (!hasAllCastawaysBeenDraftedOnce(groupId)) {
-            Optional<TeamCastaway> existing = teamCastawayRepository
-                    .findByGroupIdAndCastawayPerformanceId(groupId, castawayPerformanceId);
-            if (existing.isPresent()) {
-                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Castaway already drafted");
-            }
+        // Validate same team cannot draft the same castaway twice
+        if (teamCastawayRepository.existsByTeamIdAndCastawayPerformanceId(team.getId(), castawayPerformanceId)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Your team already drafted this castaway");
+        }
+
+        // Validate per-castaway global cap in this group.
+        // Cap increases dynamically: 1, then 2, then 3... only when all castaways reached prior cap.
+        int maxAllowedPicks = getCurrentMaxAllowedPicks(groupId, group.getSeason().getSeason());
+        int currentCastawayPickCount = teamCastawayRepository
+                .countByGroupIdAndCastawayPerformanceId(groupId, castawayPerformanceId);
+        if (currentCastawayPickCount >= maxAllowedPicks) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Castaway has reached max draft limit (" + maxAllowedPicks + ")"
+            );
         }
 
         // Calculate pick number
@@ -330,7 +342,7 @@ public class DraftService {
         teamCastaway.setTeam(team);
         teamCastaway.setCastawayPerformance(castawayPerformance);
         teamCastaway.setDraftOrder(pickNumber);
-        teamCastaway.setPoints(0);
+        teamCastaway.setPoints(0); // TODO: Calculate initial points based on group settings if needed
         teamCastawayRepository.save(teamCastaway);
 
         // Check if draft should auto-complete
@@ -342,7 +354,8 @@ public class DraftService {
     }
 
     /**
-     * Get list of undrafted castaways (or all castaways if reactivation has occurred)
+     * Get list of available castaways using dynamic global cap.
+     * Cap increases from 1 -> 2 -> 3... as full reactivation cycles complete.
      */
     public List<CastawayPerformance> getUndraftedCastaways(Integer groupId) {
         Group group = groupRepository.findById(groupId)
@@ -352,40 +365,43 @@ public class DraftService {
         List<CastawayPerformance> allCastaways = castawayPerformanceRepository
                 .findBySeasonId(group.getSeason().getSeason());
 
-        // If all castaways have been drafted once, allow reactivation (return all)
-        if (hasAllCastawaysBeenDraftedOnce(groupId)) {
-            return allCastaways;
-        }
+        // Count current picks for each castaway in this group
+        Map<Integer, Long> castawayPickCounts = teamCastawayRepository.findByTeamGroupIdOrderByDraftOrderAsc(groupId)
+            .stream()
+            .collect(Collectors.groupingBy(tc -> tc.getCastawayPerformance().getId(), Collectors.counting()));
 
-        // Otherwise, return only undrafted castaways
-        Set<Integer> draftedIds = teamCastawayRepository.findByTeamGroupIdOrderByDraftOrderAsc(groupId).stream()
-                .map(tc -> tc.getCastawayPerformance().getId())
-                .collect(Collectors.toSet());
+        int maxAllowedPicks = calculateCurrentMaxAllowedPicks(allCastaways, castawayPickCounts);
 
         return allCastaways.stream()
-                .filter(cp -> !draftedIds.contains(cp.getId()))
+            .filter(cp -> castawayPickCounts.getOrDefault(cp.getId(), 0L) < maxAllowedPicks)
                 .collect(Collectors.toList());
     }
 
     /**
-     * Check if all unique castaways have been drafted at least once
+     * Calculate dynamic max picks per castaway for current draft state.
+     * Uses minimum pick count among all castaways + 1.
      */
-    private boolean hasAllCastawaysBeenDraftedOnce(Integer groupId) {
-        Group group = groupRepository.findById(groupId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Group not found"));
+    private int getCurrentMaxAllowedPicks(Integer groupId, Integer seasonId) {
+        List<CastawayPerformance> allCastaways = castawayPerformanceRepository.findBySeasonId(seasonId);
 
-        // Count total castaways in this season
-        long totalCastaways = castawayPerformanceRepository
-                .findBySeasonId(group.getSeason().getSeason())
-                .size();
+        Map<Integer, Long> castawayPickCounts = teamCastawayRepository.findByTeamGroupIdOrderByDraftOrderAsc(groupId)
+                .stream()
+                .collect(Collectors.groupingBy(tc -> tc.getCastawayPerformance().getId(), Collectors.counting()));
 
-        // Count unique drafted castaways
-        long uniqueDrafted = teamCastawayRepository.findByTeamGroupIdOrderByDraftOrderAsc(groupId).stream()
-                .map(tc -> tc.getCastawayPerformance().getId())
-                .distinct()
-                .count();
+        return calculateCurrentMaxAllowedPicks(allCastaways, castawayPickCounts);
+    }
 
-        return uniqueDrafted >= totalCastaways;
+    private int calculateCurrentMaxAllowedPicks(List<CastawayPerformance> allCastaways, Map<Integer, Long> castawayPickCounts) {
+        if (allCastaways.isEmpty()) {
+            return 1;
+        }
+
+        long minPickCount = allCastaways.stream()
+                .mapToLong(cp -> castawayPickCounts.getOrDefault(cp.getId(), 0L))
+                .min()
+                .orElse(0L);
+
+        return (int) minPickCount + 1;
     }
 
     /**
@@ -415,6 +431,13 @@ public class DraftService {
     public void completeDraft(Integer groupId) {
         Group group = groupRepository.findById(groupId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Group not found"));
+
+        // Recalculate points for all teams now that draft is finalized
+        List<Team> teams = teamRepository.findByGroupId(groupId);
+        for (Team team : teams) {
+            pointCalculationService.calculateAndUpdateTeamPoints(team.getId());
+            // Todo: If group settings require, also calculate points from previous events for drafted castaways and add to team points
+        }
 
         group.setStatus(GroupStatus.ACTIVE);
         group.setDraftEndTime(LocalDateTime.now());

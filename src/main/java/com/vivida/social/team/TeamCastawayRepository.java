@@ -22,4 +22,7 @@ public interface TeamCastawayRepository extends JpaRepository<TeamCastaway, Inte
     
     @Query("SELECT tc FROM TeamCastaway tc WHERE tc.team.group.id = :groupId AND tc.castawayPerformance.id = :castawayPerformanceId")
     Optional<TeamCastaway> findByGroupIdAndCastawayPerformanceId(@Param("groupId") Integer groupId, @Param("castawayPerformanceId") Integer castawayPerformanceId);
+
+    @Query("SELECT COUNT(tc) FROM TeamCastaway tc WHERE tc.team.group.id = :groupId AND tc.castawayPerformance.id = :castawayPerformanceId")
+    int countByGroupIdAndCastawayPerformanceId(@Param("groupId") Integer groupId, @Param("castawayPerformanceId") Integer castawayPerformanceId);
 }
