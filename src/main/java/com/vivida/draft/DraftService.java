@@ -313,11 +313,13 @@ public class DraftService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Castaway is not from this season");
         }
 
-        // Validate castaway not already drafted
-        Optional<TeamCastaway> existing = teamCastawayRepository
-                .findByGroupIdAndCastawayPerformanceId(groupId, castawayPerformanceId);
-        if (existing.isPresent()) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Castaway already drafted");
+        // Validate castaway not already drafted (unless reactivation has occurred)
+        if (!hasAllCastawaysBeenDraftedOnce(groupId)) {
+            Optional<TeamCastaway> existing = teamCastawayRepository
+                    .findByGroupIdAndCastawayPerformanceId(groupId, castawayPerformanceId);
+            if (existing.isPresent()) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Castaway already drafted");
+            }
         }
 
         // Calculate pick number
@@ -340,7 +342,7 @@ public class DraftService {
     }
 
     /**
-     * Get list of undrafted castaways
+     * Get list of undrafted castaways (or all castaways if reactivation has occurred)
      */
     public List<CastawayPerformance> getUndraftedCastaways(Integer groupId) {
         Group group = groupRepository.findById(groupId)
@@ -350,15 +352,40 @@ public class DraftService {
         List<CastawayPerformance> allCastaways = castawayPerformanceRepository
                 .findBySeasonId(group.getSeason().getSeason());
 
-        // Get all drafted castaways
+        // If all castaways have been drafted once, allow reactivation (return all)
+        if (hasAllCastawaysBeenDraftedOnce(groupId)) {
+            return allCastaways;
+        }
+
+        // Otherwise, return only undrafted castaways
         Set<Integer> draftedIds = teamCastawayRepository.findByTeamGroupIdOrderByDraftOrderAsc(groupId).stream()
                 .map(tc -> tc.getCastawayPerformance().getId())
                 .collect(Collectors.toSet());
 
-        // Filter to undrafted
         return allCastaways.stream()
                 .filter(cp -> !draftedIds.contains(cp.getId()))
                 .collect(Collectors.toList());
+    }
+
+    /**
+     * Check if all unique castaways have been drafted at least once
+     */
+    private boolean hasAllCastawaysBeenDraftedOnce(Integer groupId) {
+        Group group = groupRepository.findById(groupId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Group not found"));
+
+        // Count total castaways in this season
+        long totalCastaways = castawayPerformanceRepository
+                .findBySeasonId(group.getSeason().getSeason())
+                .size();
+
+        // Count unique drafted castaways
+        long uniqueDrafted = teamCastawayRepository.findByTeamGroupIdOrderByDraftOrderAsc(groupId).stream()
+                .map(tc -> tc.getCastawayPerformance().getId())
+                .distinct()
+                .count();
+
+        return uniqueDrafted >= totalCastaways;
     }
 
     /**

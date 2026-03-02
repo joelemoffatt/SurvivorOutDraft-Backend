@@ -942,7 +942,16 @@ public class DataLoader implements CommandLineRunner {
         group.setAdmin(users.get(0));
         group.setSeason(season);
         group.setDraftDate(LocalDateTime.now());
-        group.setStatus(GroupStatus.COMPLETED);
+        
+        // Set draft configuration for Season 49
+        if (seasonNum == 49) {
+            group.setStatus(GroupStatus.PENDING);
+            group.setDraftStartTime(LocalDateTime.now().plusMinutes(1));  // 1 minute from now
+            group.setTeamSize(5);  // Each team gets 5 castaways
+        } else {
+            group.setStatus(GroupStatus.COMPLETED);
+        }
+        
         groupRepository.save(group);
 
         for (User user : users) {
@@ -972,6 +981,16 @@ public class DataLoader implements CommandLineRunner {
             team.setTeamName("Team " + user.getUsername());
             teamRepository.save(team);
             teams.add(team);
+        }
+
+        // For Season 49, don't pre-draft players - let the draft happen
+        if (seasonNum == 49) {
+            System.out.println("✓ Test group seeded for Season " + seasonNum + ": " + groupName);
+            System.out.println("  Status: PENDING - Draft starts in 1 minute!");
+            System.out.println("  Team size: 5 castaways per team");
+            System.out.println("  Teams created: " + teams.size());
+            System.out.println();
+            return;  // Skip auto-drafting
         }
 
         List<CastawayPerformance> performances = new ArrayList<>();
