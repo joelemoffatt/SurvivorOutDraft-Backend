@@ -3,13 +3,14 @@ services:
     container_name: postgres-survivor-out-draft
     image: postgres:latest
     environment:
-      POSTGRES_USER: vivida
-      POSTGRES_PASSWORD: password
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: soddb
       PGDATA: /data/postgres
     volumes:
       - db:/data/postgres
     ports:
-      - "5332:5432"
+      - "5432:5432"
     networks:
       - db
     restart: unless-stopped

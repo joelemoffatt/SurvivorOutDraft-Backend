@@ -17,6 +17,10 @@ public class GroupDTO {
     private AdminDTO admin;
     private SeasonDTO season;
     private LocalDateTime draftDate;
+    private LocalDateTime draftStartTime;
+    private LocalDateTime draftEndTime;
+    private Integer teamSize;
+    private String draftOrder;
     private GroupStatus status;
     private LocalDateTime createdAt;
 
@@ -44,6 +48,10 @@ public class GroupDTO {
         dto.setId(group.getId());
         dto.setName(group.getName());
         dto.setDraftDate(group.getDraftDate());
+        dto.setDraftStartTime(group.getDraftStartTime());
+        dto.setDraftEndTime(group.getDraftEndTime());
+        dto.setTeamSize(group.getTeamSize());
+        dto.setDraftOrder(group.getDraftOrder());
         dto.setStatus(group.getStatus());
         dto.setCreatedAt(group.getCreatedAt());
 

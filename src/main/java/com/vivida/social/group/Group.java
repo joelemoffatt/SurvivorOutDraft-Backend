@@ -39,6 +39,15 @@ public class Group {
 
     private LocalDateTime draftDate;
 
+    private LocalDateTime draftStartTime;
+
+    private LocalDateTime draftEndTime;
+
+    private Integer teamSize;
+
+    @Column(columnDefinition = "TEXT")
+    private String draftOrder;  // JSON array of user IDs in randomized draft order
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private GroupStatus status;
