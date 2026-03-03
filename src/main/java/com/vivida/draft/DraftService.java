@@ -445,6 +445,27 @@ public class DraftService {
     }
 
     /**
+     * Reset the draft - removes all picks and resets group to PENDING status
+     */
+    public void resetDraft(Integer groupId) {
+        Group group = groupRepository.findById(groupId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Group not found"));
+
+        // Delete all draft picks for teams in this group
+        List<Team> teams = teamRepository.findByGroupId(groupId);
+        for (Team team : teams) {
+            List<TeamCastaway> picks = teamCastawayRepository.findByTeamId(team.getId());
+            teamCastawayRepository.deleteAll(picks);
+        }
+
+        // Reset group status back to PENDING
+        group.setStatus(GroupStatus.PENDING);
+        group.setDraftStartTime(null);
+        group.setDraftEndTime(null);
+        groupRepository.save(group);
+    }
+
+    /**
      * Check if it's a specific user's turn
      */
     public boolean isUserTurn(Integer groupId, Integer userId) {
