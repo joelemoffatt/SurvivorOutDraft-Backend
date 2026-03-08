@@ -1,6 +1,13 @@
 package com.vivida.social.group;
 
+import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.server.ResponseStatusException;
+
+import com.vivida.auth.User;
+import com.vivida.auth.UserRepository;
+import com.vivida.game.season.Season;
+import com.vivida.game.season.SeasonRepository;
 
 import java.util.List;
 import java.util.stream.Collectors;
@@ -10,9 +17,13 @@ import java.util.stream.Collectors;
 public class GroupController {
 
     private final GroupService groupService;
+    private final UserRepository userRepository;
+    private final SeasonRepository seasonRepository;
 
-    public GroupController(GroupService groupService) {
+    public GroupController(GroupService groupService, UserRepository userRepository, SeasonRepository seasonRepository) {
         this.groupService = groupService;
+        this.userRepository = userRepository;
+        this.seasonRepository = seasonRepository;
     }
 
     @GetMapping
@@ -49,8 +60,41 @@ public class GroupController {
     }
 
     @PostMapping
-    public void addGroup(@RequestBody Group group) {
-        groupService.insertGroup(group);
+    public GroupDTO addGroup(@RequestBody CreateGroupRequest request) {
+        // Validate required fields
+        if (request.getName() == null || request.getName().trim().isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Group name is required");
+        }
+        if (request.getAdmin() == null || request.getAdmin().getId() == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Admin user is required");
+        }
+        if (request.getSeason() == null || request.getSeason().getId() == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Season is required");
+        }
+
+        // Fetch User (admin) entity
+        User admin = userRepository.findById(request.getAdmin().getId())
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND, "Admin user not found with id " + request.getAdmin().getId()
+                ));
+
+        // Fetch Season entity
+        Season season = seasonRepository.findById(request.getSeason().getId())
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND, "Season not found with id " + request.getSeason().getId()
+                ));
+
+        // Create Group entity
+        Group group = new Group();
+        group.setName(request.getName().trim());
+        group.setAdmin(admin);
+        group.setSeason(season);
+        group.setTeamSize(request.getTeamSize());
+        group.setStatus(GroupStatus.PENDING);
+
+        // Save group and automatically add admin as member
+        Group savedGroup = groupService.createGroupWithAdmin(group);
+        return GroupDTO.fromEntity(savedGroup);
     }
 
     @PutMapping

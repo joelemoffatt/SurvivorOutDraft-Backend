@@ -15,6 +15,19 @@ public class GroupMemberController {
     public GroupMemberController(GroupMemberService groupMemberService) {
         this.groupMemberService = groupMemberService;
     }
+    
+    @PostMapping("invite-by-username")
+    public GroupMemberDTO inviteByUsername(@RequestBody InviteByUsernameRequest request) {
+        GroupMember member = groupMemberService.inviteByUsername(request.getGroupId(), request.getUsername());
+        return new GroupMemberDTO(member);
+    }
+    
+    @GetMapping("user/{userId}/pending")
+    public List<GroupMemberDTO> getPendingInvitations(@PathVariable Integer userId) {
+        return groupMemberService.getPendingInvitationsByUserId(userId).stream()
+                .map(GroupMemberDTO::new)
+                .toList();
+    }
 
     @GetMapping
     public List<GroupMemberDTO> getGroupMembers() {

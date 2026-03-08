@@ -1,7 +1,6 @@
 package com.vivida.social.team;
 
 import java.time.LocalDateTime;
-import java.util.List;
 
 /**
  * DTO for TeamCastaway response - breaks circular references
