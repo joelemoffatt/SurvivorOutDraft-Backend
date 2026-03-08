@@ -52,6 +52,7 @@ import com.vivida.social.team.TeamRepository;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
@@ -65,6 +66,15 @@ import java.util.*;
 @ConditionalOnProperty(name = "vivida.dataloader.enabled", havingValue = "true")
 @Component
 public class DataLoader implements CommandLineRunner {
+    @Value("${vivida.dataloader.load-game-data:true}")
+    private boolean loadGameData;
+    
+    @Value("${vivida.dataloader.load-users:true}")
+    private boolean loadUsers;
+    
+    @Value("${vivida.dataloader.load-groups:true}")
+    private boolean loadGroups;
+    
     // Map vote_round_id to (season, episode, boot_order, vote_order)
     private final Map<Integer, String> voteRoundIdToKey = new HashMap<>();
 
@@ -142,47 +152,72 @@ public class DataLoader implements CommandLineRunner {
     public void run(String... args) throws Exception {
         System.out.println("\n" + "=".repeat(80));
         System.out.println("LOADING SURVIVOR DATA INTO DATABASE");
+        System.out.println("Flags: Game=" + loadGameData + " | Users=" + loadUsers + " | Groups=" + loadGroups);
         System.out.println("=".repeat(80) + "\n");
 
         long totalStart = System.currentTimeMillis();
         try {
             clearAllData();
             
-            loadSeasons();
-            seasonRepository.findAll().forEach(s -> seasonCache.put(s.getSeason(), s));
+            if (loadGameData) {
+                System.out.println("[GAME DATA] Loading...");
+                loadSeasons();
+                seasonRepository.findAll().forEach(s -> seasonCache.put(s.getSeason(), s));
+                
+                loadCastaways();
+                castawayRepository.findAll().forEach(c -> castawayCache.put(c.getJson_id(), c));
+                
+                loadCastawayPerformances();
+                castawayPerformanceRepository.findAll().forEach(p -> 
+                    perfCache.put(p.getSeason().getSeason() + ":" + p.getCastaway().getJson_id(), p));
+                
+                loadTribes();
+                tribeRepository.findAll().forEach(t -> tribeByKeyCache.put(t.getSeason().getSeason() + ":" + t.getName(), t));
+                
+                loadEpisodes();
+                episodeRepository.findAll().forEach(e -> episodeCache.put(e.getId(), e));
+                
+                updateSeasonEpisodeCounts();
+                
+                loadChallenges();
+                challengeRepository.findAll().forEach(c ->
+                    challengeByKey.put(c.getSeason().getSeason() + ":" + c.getChallenge_id(), c)
+                );
+                loadTribal();
+                tribalRepository.findAll().forEach(t -> 
+                    tribalByKey.put(t.getEpisode().getSeason().getSeason() + ":" + t.getEpisode().getEpisodeNumber() + ":" + t.getBootOrder(), t));
+                
+                loadTribeMapping();
+                loadVoteRounds();
+                loadChallengePerformances();
+                loadVotes();
+                loadJuryVotes();
+                loadJourneys();
+                loadBoots();
+                loadAdvantageMovements();
+                System.out.println("[GAME DATA] ✓ Complete\n");
+            } else {
+                System.out.println("[GAME DATA] Skipped - loading from existing database");
+                // Still need to populate caches from existing data
+                seasonRepository.findAll().forEach(s -> seasonCache.put(s.getSeason(), s));
+                castawayRepository.findAll().forEach(c -> castawayCache.put(c.getJson_id(), c));
+                castawayPerformanceRepository.findAll().forEach(p -> 
+                    perfCache.put(p.getSeason().getSeason() + ":" + p.getCastaway().getJson_id(), p));
+                tribeRepository.findAll().forEach(t -> tribeByKeyCache.put(t.getSeason().getSeason() + ":" + t.getName(), t));
+                episodeRepository.findAll().forEach(e -> episodeCache.put(e.getId(), e));
+                challengeRepository.findAll().forEach(c ->
+                    challengeByKey.put(c.getSeason().getSeason() + ":" + c.getChallenge_id(), c));
+                tribalRepository.findAll().forEach(t -> 
+                    tribalByKey.put(t.getEpisode().getSeason().getSeason() + ":" + t.getEpisode().getEpisodeNumber() + ":" + t.getBootOrder(), t));
+            }
             
-            loadCastaways();
-            castawayRepository.findAll().forEach(c -> castawayCache.put(c.getJson_id(), c));
-            
-            loadCastawayPerformances();
-            castawayPerformanceRepository.findAll().forEach(p -> 
-                perfCache.put(p.getSeason().getSeason() + ":" + p.getCastaway().getJson_id(), p));
-            
-            loadTribes();
-            tribeRepository.findAll().forEach(t -> tribeByKeyCache.put(t.getSeason().getSeason() + ":" + t.getName(), t));
-            
-            loadEpisodes();
-            episodeRepository.findAll().forEach(e -> episodeCache.put(e.getId(), e));
-            
-            updateSeasonEpisodeCounts();
-            
-            loadChallenges();
-            challengeRepository.findAll().forEach(c ->
-                challengeByKey.put(c.getSeason().getSeason() + ":" + c.getChallenge_id(), c)
-            );
-            loadTribal();
-            tribalRepository.findAll().forEach(t -> 
-                tribalByKey.put(t.getEpisode().getSeason().getSeason() + ":" + t.getEpisode().getEpisodeNumber() + ":" + t.getBootOrder(), t));
-            
-            loadTribeMapping();
-            loadVoteRounds();
-            loadChallengePerformances();
-            loadVotes();
-            loadJuryVotes();
-            loadJourneys();
-            loadBoots();
-            loadAdvantageMovements();
-            seedPointCalcTestData();
+            if (loadGroups) {
+                System.out.println("[GROUP DATA] Loading test groups...");
+                seedPointCalcTestData();
+                System.out.println("[GROUP DATA] ✓ Complete\n");
+            } else {
+                System.out.println("[GROUP DATA] Skipped\n");
+            }
             
             System.out.println("\n" + "=".repeat(80));
             long totalTime = (System.currentTimeMillis() - totalStart) / 1000;
@@ -216,38 +251,50 @@ public class DataLoader implements CommandLineRunner {
     }
     
     private void clearAllData() {
-        System.out.println("Clearing all existing data...");
-        // Clear user/group/team related data first (due to foreign keys)
-        teamCastawayRepository.deleteAllInBatch();
-        entityManager.flush();
-        teamRepository.deleteAllInBatch();
-        entityManager.flush();
-        pointRuleRepository.deleteAllInBatch();
-        groupMemberRepository.deleteAllInBatch();
-        entityManager.flush();
-        groupRepository.deleteAllInBatch();
-        entityManager.flush();
-        userRepository.deleteAllInBatch();
-        entityManager.flush();
+        System.out.println("Clearing data based on flags...");
         
-        // Clear survivor data
-        advantageMovementRepository.deleteAllInBatch();
-        bootRepository.deleteAllInBatch();
-        journeyRepository.deleteAllInBatch();
-        juryVoteRepository.deleteAllInBatch();
-        voteRepository.deleteAllInBatch();
-        voteRoundRepository.deleteAllInBatch();
-        tribeMappingRepository.deleteAllInBatch();
-        challengePerformanceRepository.deleteAllInBatch();
-        challengeRepository.deleteAllInBatch();
-        tribalRepository.deleteAllInBatch();
-        castawayPerformanceRepository.deleteAllInBatch();
-        episodeRepository.deleteAllInBatch();
-        tribeRepository.deleteAllInBatch();
-        castawayRepository.deleteAllInBatch();
-        seasonRepository.deleteAllInBatch();
-        entityManager.flush();
-        System.out.println("✓ All data cleared\n");
+        if (loadGroups) {
+            // Clear group/team related data first (due to foreign keys)
+            System.out.println("  - Clearing groups, teams, rosters...");
+            teamCastawayRepository.deleteAllInBatch();
+            entityManager.flush();
+            teamRepository.deleteAllInBatch();
+            entityManager.flush();
+            pointRuleRepository.deleteAllInBatch();
+            groupMemberRepository.deleteAllInBatch();
+            entityManager.flush();
+            groupRepository.deleteAllInBatch();
+            entityManager.flush();
+        }
+        
+        if (loadUsers) {
+            System.out.println("  - Clearing users...");
+            userRepository.deleteAllInBatch();
+            entityManager.flush();
+        }
+        
+        if (loadGameData) {
+            // Clear survivor data
+            System.out.println("  - Clearing game data (seasons, castaways, episodes, etc.)...");
+            advantageMovementRepository.deleteAllInBatch();
+            bootRepository.deleteAllInBatch();
+            journeyRepository.deleteAllInBatch();
+            juryVoteRepository.deleteAllInBatch();
+            voteRepository.deleteAllInBatch();
+            voteRoundRepository.deleteAllInBatch();
+            tribeMappingRepository.deleteAllInBatch();
+            challengePerformanceRepository.deleteAllInBatch();
+            challengeRepository.deleteAllInBatch();
+            tribalRepository.deleteAllInBatch();
+            castawayPerformanceRepository.deleteAllInBatch();
+            episodeRepository.deleteAllInBatch();
+            tribeRepository.deleteAllInBatch();
+            castawayRepository.deleteAllInBatch();
+            seasonRepository.deleteAllInBatch();
+            entityManager.flush();
+        }
+        
+        System.out.println("✓ Data cleared\n");
     }
     
     private <T> void saveInBatches(List<T> entities, String entityName) {
@@ -901,9 +948,265 @@ public class DataLoader implements CommandLineRunner {
     }
 
     private void seedPointCalcTestData() {
-        seedGroupForSeason(49, "Jeff Probst Fan Club");
-        seedGroupForSeason(48, "Survivor Season 48 League");
-        seedGroupForSeason(47, "47 Degrees of Separation");
+        System.out.println("═".repeat(80));
+        System.out.println("SEEDING TEST DATA GROUPS");
+        System.out.println("═".repeat(80) + "\n");
+
+        // ==================== SECTION 1: SEASON 50 - HARDCODED TEAM ROSTERS ====================
+        System.out.println("[SECTION 1] Season 50 - Jeff's Probst Fan Club 50 (Hardcoded Teams)\n");
+        Map<String, List<String>> season50Rosters = new LinkedHashMap<>();
+        season50Rosters.put("joel", Arrays.asList("Jonathan", "Kamilla", "Rizo", "Charlie"));
+        season50Rosters.put("jess", Arrays.asList("Cirie", "Joe", "Q", "Rick"));
+        season50Rosters.put("mckenna", Arrays.asList("Colby", "Mike", "Savannah", "Christian"));
+        season50Rosters.put("kc", Arrays.asList("Charlie", "Christian", "Ozzy", "Stephenie"));
+        season50Rosters.put("kaitlin", Arrays.asList("Aubry", "Coach", "Dee", "Tiffany"));
+        season50Rosters.put("devin", Arrays.asList("Angelina", "Chrissy", "Emily", "Genevieve"));
+        
+        seedJeffsProbstFanClub(50, "Jeff's Probst Fan Club 50", season50Rosters);
+        
+        System.out.println("═".repeat(80) + "\n");
+        
+        // ==================== SECTION 2: SEASONS 47-49 - COLOR TEAMS WITH RANDOM ROSTERS ====================
+        System.out.println("[SECTION 2] Seasons 47-49 - Colors (Red/Yellow/Blue/Green with Random Teams)\n");
+        for (int season : Arrays.asList(47, 48, 49)) {
+            seedColorTeamGroup(season, "Colors S" + season);
+        }
+        
+        System.out.println("═".repeat(80));
+        System.out.println("✓ TEST DATA SEEDING COMPLETE");
+        System.out.println("═".repeat(80) + "\n");
+    }
+
+    private void seedJeffsProbstFanClub(Integer seasonNum, String groupName, Map<String, List<String>> userRosters) {
+        if (groupRepository.findByName(groupName).isPresent()) {
+            System.out.println("✓ Group already exists: " + groupName + " (skipping)\n");
+            return;
+        }
+
+        Season season = seasonCache.get(seasonNum);
+        if (season == null) {
+            System.out.println("⚠  Season " + seasonNum + " not found\n");
+            return;
+        }
+
+        System.out.println("Creating: " + groupName);
+        System.out.println("  Season: " + seasonNum);
+        System.out.println("  Teams: " + userRosters.size() + " with hardcoded rosters\n");
+
+        // Create/fetch users
+        List<User> users = new ArrayList<>();
+        for (String username : userRosters.keySet()) {
+            User user = userRepository.findByUsername(username).orElse(null);
+            if (user == null) {
+                user = new User();
+                user.setUsername(username);
+                user.setEmail(username + "@example.com");
+                user.setPassword(passwordEncoder.encode("123"));
+                user.setRole(Role.USER);
+                user.setEnabled(true);
+                userRepository.save(user);
+            }
+            users.add(user);
+        }
+
+        // Create group
+        Group group = new Group();
+        group.setName(groupName);
+        group.setAdmin(users.get(0));
+        group.setSeason(season);
+        group.setDraftDate(LocalDateTime.now());
+        group.setStatus(GroupStatus.ACTIVE);
+        group.setDraftStartTime(LocalDateTime.now().plusMinutes(1));
+        group.setTeamSize(4);  // 4 castaways per team for hardcoded rosters
+        groupRepository.save(group);
+
+        // Add users to group
+        for (User user : users) {
+            GroupMember member = new GroupMember();
+            member.setGroup(group);
+            member.setUser(user);
+            member.setStatus(MembershipStatus.ACCEPTED);
+            groupMemberRepository.save(member);
+        }
+
+        // Add point rules
+        List<PointRule> rules = new ArrayList<>();
+        rules.add(buildPointRule(group, RuleType.INDIVIDUAL_IMMUNITY, 2, "Individual immunity wins"));
+        rules.add(buildPointRule(group, RuleType.FOUND_IDOL, 1, "Found idol"));
+        rules.add(buildPointRule(group, RuleType.FOUND_ADVANTAGE, 1, "Found advantage"));
+        rules.add(buildPointRule(group, RuleType.SOLE_SURVIVOR, 5, "Sole Survivor"));
+        rules.add(buildPointRule(group, RuleType.RUNNER_UP, 2, "Runner-up"));
+        rules.add(buildPointRule(group, RuleType.MADE_MERGE, 1, "Made the merge"));
+        rules.add(buildPointRule(group, RuleType.MED_EVAC, -2, "Med evac"));
+        rules.add(buildPointRule(group, RuleType.QUIT, -2, "Quit"));
+        pointRuleRepository.saveAll(rules);
+
+        // Create teams and assign hardcoded castaways
+        int draftOrder = 1;
+        for (User user : users) {
+            Team team = new Team();
+            team.setGroup(group);
+            team.setUser(user);
+            team.setTeamName("Team " + user.getUsername());
+            teamRepository.save(team);
+            
+            // Assign pre-configured castaways
+            List<String> rosterNames = userRosters.get(user.getUsername());
+            if (rosterNames != null) {
+                for (String castawayName : rosterNames) {
+                    CastawayPerformance perf = findCastawayPerformanceByName(castawayName, seasonNum);
+                    if (perf != null) {
+                        TeamCastaway tc = new TeamCastaway();
+                        tc.setTeam(team);
+                        tc.setCastawayPerformance(perf);
+                        tc.setDraftOrder(draftOrder++);
+                        tc.setDraftedAt(LocalDateTime.now());
+                        teamCastawayRepository.save(tc);
+                    }
+                }
+            }
+        }
+
+        System.out.println("✓ Created: " + groupName + " with hardcoded team rosters\n");
+    }
+
+    private void seedColorTeamGroup(Integer seasonNum, String groupName) {
+        if (groupRepository.findByName(groupName).isPresent()) {
+            System.out.println("✓ Group already exists: " + groupName + " (skipping)\n");
+            return;
+        }
+
+        Season season = seasonCache.get(seasonNum);
+        if (season == null) {
+            System.out.println("⚠  Season " + seasonNum + " not found\n");
+            return;
+        }
+
+        System.out.println("Creating: " + groupName);
+        System.out.println("  Season: " + seasonNum);
+        System.out.println("  Teams: 4 color teams with random rosters\n");
+
+        // Create/fetch users for color teams
+        List<String> colorNames = Arrays.asList("red", "yellow", "blue", "green");
+        List<User> users = new ArrayList<>();
+        for (String colorName : colorNames) {
+            User user = userRepository.findByUsername(colorName).orElse(null);
+            if (user == null) {
+                user = new User();
+                user.setUsername(colorName);
+                user.setEmail(colorName + "@example.com");
+                user.setPassword(passwordEncoder.encode("123"));
+                user.setRole(Role.USER);
+                user.setEnabled(true);
+                userRepository.save(user);
+            }
+            users.add(user);
+        }
+
+        // Create group
+        Group group = new Group();
+        group.setName(groupName);
+        group.setAdmin(users.get(0));
+        group.setSeason(season);
+        group.setStatus(GroupStatus.COMPLETED);
+        group.setDraftDate(LocalDateTime.now());
+        groupRepository.save(group);
+
+        // Add users to group
+        for (User user : users) {
+            GroupMember member = new GroupMember();
+            member.setGroup(group);
+            member.setUser(user);
+            member.setStatus(MembershipStatus.ACCEPTED);
+            groupMemberRepository.save(member);
+        }
+
+        // Add point rules
+        List<PointRule> rules = new ArrayList<>();
+        rules.add(buildPointRule(group, RuleType.INDIVIDUAL_IMMUNITY, 2, "Individual immunity wins"));
+        rules.add(buildPointRule(group, RuleType.FOUND_IDOL, 1, "Found idol"));
+        rules.add(buildPointRule(group, RuleType.FOUND_ADVANTAGE, 1, "Found advantage"));
+        rules.add(buildPointRule(group, RuleType.SOLE_SURVIVOR, 5, "Sole Survivor"));
+        rules.add(buildPointRule(group, RuleType.RUNNER_UP, 2, "Runner-up"));
+        rules.add(buildPointRule(group, RuleType.MADE_MERGE, 1, "Made the merge"));
+        rules.add(buildPointRule(group, RuleType.MED_EVAC, -2, "Med evac"));
+        rules.add(buildPointRule(group, RuleType.QUIT, -2, "Quit"));
+        pointRuleRepository.saveAll(rules);
+
+        // Get available castaways for this season
+        List<CastawayPerformance> seasonPerformances = new ArrayList<>();
+        for (CastawayPerformance perf : perfCache.values()) {
+            if (perf.getSeason().getSeason().equals(seasonNum)) {
+                seasonPerformances.add(perf);
+            }
+        }
+
+        if (seasonPerformances.isEmpty()) {
+            System.out.println("⚠  No castaways found for season " + seasonNum + "\n");
+            return;
+        }
+
+        // Shuffle castaways randomly
+        Collections.shuffle(seasonPerformances);
+        int totalCastaways = seasonPerformances.size();
+        int numTeams = users.size();
+        int castawaysPerTeam = totalCastaways / numTeams;
+        
+        System.out.println("  Total castaways: " + totalCastaways + " | Teams: " + numTeams + " | Per team: " + castawaysPerTeam);
+        
+        // Create teams first
+        List<Team> teams = new ArrayList<>();
+        for (User user : users) {
+            Team team = new Team();
+            team.setGroup(group);
+            team.setUser(user);
+            team.setTeamName("Team " + user.getUsername());
+            teamRepository.save(team);
+            teams.add(team);
+        }
+        
+        // Distribute castaways using snake draft pattern
+        int draftOrder = 1;
+        for (int pickNum = 0; pickNum < totalCastaways; pickNum++) {
+            // Calculate team position using snake draft logic
+            int roundNum = pickNum / numTeams;
+            int position;
+            if (roundNum % 2 == 0) {
+                // Even rounds: forward (0, 1, 2, 3)
+                position = pickNum % numTeams;
+            } else {
+                // Odd rounds: backward (3, 2, 1, 0)
+                position = numTeams - 1 - (pickNum % numTeams);
+            }
+            
+            Team team = teams.get(position);
+            CastawayPerformance perf = seasonPerformances.get(pickNum);
+            
+            TeamCastaway tc = new TeamCastaway();
+            tc.setTeam(team);
+            tc.setCastawayPerformance(perf);
+            tc.setDraftOrder(draftOrder++);
+            tc.setDraftedAt(LocalDateTime.now());
+            teamCastawayRepository.save(tc);
+        }
+
+        System.out.println("✓ Created: " + groupName + " with random team rosters\n");
+    }
+
+    private CastawayPerformance findCastawayPerformanceByName(String castawayName, Integer seasonNum) {
+        for (CastawayPerformance perf : perfCache.values()) {
+            if (perf.getSeason().getSeason().equals(seasonNum)) {
+                String perfName = perf.getCastaway().getName();
+                String fullName = perf.getCastaway().getFull_name();
+                if (perfName != null && perfName.equalsIgnoreCase(castawayName)) {
+                    return perf;
+                }
+                if (fullName != null && fullName.toLowerCase().contains(castawayName.toLowerCase())) {
+                    return perf;
+                }
+            }
+        }
+        return null;
     }
 
     private void seedGroupForSeason(Integer seasonNum, String groupName) {
@@ -926,7 +1229,7 @@ public class DataLoader implements CommandLineRunner {
         System.out.println("Seeding test group for Season " + seasonNum + ": " + groupName + "...");
 
         List<User> users = new ArrayList<>();
-        String[] usernames = {"blue", "red", "yellow", "green"};
+        String[] usernames = {"joel", "jess", "mckenna", "kc", "kaitlin", "devin"};
         for (String username : usernames) {
             String email = username + "@example.com";
             User user = userRepository.findByUsername(username).orElse(null);
@@ -948,8 +1251,8 @@ public class DataLoader implements CommandLineRunner {
         group.setSeason(season);
         group.setDraftDate(LocalDateTime.now());
         
-        // Set draft configuration for Season 49
-        if (seasonNum == 49) {
+        // Set draft configuration for Season 50
+        if (seasonNum == 50) {
             group.setStatus(GroupStatus.PENDING);
             group.setDraftStartTime(LocalDateTime.now().plusMinutes(1));  // 1 minute from now
             group.setTeamSize(5);  // Each team gets 5 castaways
@@ -988,8 +1291,8 @@ public class DataLoader implements CommandLineRunner {
             teams.add(team);
         }
 
-        // For Season 49, don't pre-draft players - let the draft happen
-        if (seasonNum == 49) {
+        // For Season 50, don't pre-draft players - let the draft happen
+        if (seasonNum == 50) {
             System.out.println("✓ Test group seeded for Season " + seasonNum + ": " + groupName);
             System.out.println("  Status: PENDING - Draft starts in 1 minute!");
             System.out.println("  Team size: 5 castaways per team");
