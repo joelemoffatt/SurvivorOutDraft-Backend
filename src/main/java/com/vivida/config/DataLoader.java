@@ -43,7 +43,7 @@ import com.vivida.social.group.GroupMember;
 import com.vivida.social.group.GroupMemberRepository;
 import com.vivida.social.group.GroupRepository;
 import com.vivida.social.group.GroupStatus;
-import com.vivida.social.member.MembershipStatus;
+import com.vivida.social.group.MembershipStatus;
 import com.vivida.social.team.Team;
 import com.vivida.social.team.TeamCastaway;
 import com.vivida.social.team.TeamCastawayRepository;
@@ -963,6 +963,7 @@ public class DataLoader implements CommandLineRunner {
         season50Rosters.put("devin", Arrays.asList("Angelina", "Chrissy", "Emily", "Genevieve"));
         
         seedJeffsProbstFanClub(50, "Jeff's Probst Fan Club 50", season50Rosters);
+        seedSeason50DraftingGroup("test", Arrays.asList("mckenna", "joel", "jess", "kc"));
         
         System.out.println("═".repeat(80) + "\n");
         
@@ -975,6 +976,75 @@ public class DataLoader implements CommandLineRunner {
         System.out.println("═".repeat(80));
         System.out.println("✓ TEST DATA SEEDING COMPLETE");
         System.out.println("═".repeat(80) + "\n");
+    }
+
+    private void seedSeason50DraftingGroup(String groupName, List<String> usernames) {
+        if (groupRepository.findByName(groupName).isPresent()) {
+            System.out.println("✓ Group already exists: " + groupName + " (skipping)\n");
+            return;
+        }
+
+        Season season = seasonCache.get(50);
+        if (season == null) {
+            System.out.println("⚠  Season 50 not found\n");
+            return;
+        }
+
+        System.out.println("Creating: " + groupName);
+        System.out.println("  Season: 50");
+        System.out.println("  Status: DRAFTING\n");
+
+        List<User> users = new ArrayList<>();
+        for (String username : usernames) {
+            User user = userRepository.findByUsername(username).orElse(null);
+            if (user == null) {
+                user = new User();
+                user.setUsername(username);
+                user.setEmail(username + "@example.com");
+                user.setPassword(passwordEncoder.encode("123"));
+                user.setRole(Role.USER);
+                user.setEnabled(true);
+                userRepository.save(user);
+            }
+            users.add(user);
+        }
+
+        Group group = new Group();
+        group.setName(groupName);
+        group.setAdmin(users.get(0));
+        group.setSeason(season);
+        group.setDraftDate(LocalDateTime.now());
+        group.setStatus(GroupStatus.PENDING);
+        group.setDraftStartTime(LocalDateTime.now());
+        group.setTeamSize(9);
+        groupRepository.save(group);
+
+        for (User user : users) {
+            GroupMember member = new GroupMember();
+            member.setGroup(group);
+            member.setUser(user);
+            member.setStatus(MembershipStatus.ACCEPTED);
+            groupMemberRepository.save(member);
+
+            Team team = new Team();
+            team.setGroup(group);
+            team.setUser(user);
+            team.setTeamName("Team " + user.getUsername());
+            teamRepository.save(team);
+        }
+
+        List<PointRule> rules = new ArrayList<>();
+        rules.add(buildPointRule(group, RuleType.INDIVIDUAL_IMMUNITY, 2, "Individual immunity wins"));
+        rules.add(buildPointRule(group, RuleType.FOUND_IDOL, 1, "Found idol"));
+        rules.add(buildPointRule(group, RuleType.FOUND_ADVANTAGE, 1, "Found advantage"));
+        rules.add(buildPointRule(group, RuleType.SOLE_SURVIVOR, 5, "Sole Survivor"));
+        rules.add(buildPointRule(group, RuleType.RUNNER_UP, 2, "Runner-up"));
+        rules.add(buildPointRule(group, RuleType.MADE_MERGE, 1, "Made the merge"));
+        rules.add(buildPointRule(group, RuleType.MED_EVAC, -2, "Med evac"));
+        rules.add(buildPointRule(group, RuleType.QUIT, -2, "Quit"));
+        pointRuleRepository.saveAll(rules);
+
+        System.out.println("✓ Created: " + groupName + " (Season 50, DRAFTING)\n");
     }
 
     private void seedJeffsProbstFanClub(Integer seasonNum, String groupName, Map<String, List<String>> userRosters) {

@@ -96,7 +96,7 @@ public class DraftService {
 
         // Get all active group members
         List<GroupMember> members = groupMemberRepository.findByGroupId(groupId).stream()
-                .filter(m -> m.getStatus() == com.vivida.social.member.MembershipStatus.ACCEPTED)
+                .filter(m -> m.getStatus() == com.vivida.social.group.MembershipStatus.ACCEPTED)
                 .collect(Collectors.toList());
 
         if (members.isEmpty()) {

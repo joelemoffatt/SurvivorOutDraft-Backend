@@ -9,7 +9,6 @@ import lombok.Setter;
 import java.time.LocalDateTime;
 
 import com.vivida.auth.User;
-import com.vivida.social.member.MembershipStatus;
 
 @Entity
 @Table(name = "group_members", uniqueConstraints = {

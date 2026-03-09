@@ -36,7 +36,7 @@ public class TeamCastaway {
 
     @Column(nullable = false)
     private Integer points = 0;
-    // TODO: Need to add points from previous events if group settings configured this way
+    // TODO: Need to add points from previous events before draft if group settings configured this way
 
     @Column(nullable = false)
     private LocalDateTime draftedAt;

@@ -5,7 +5,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 import org.springframework.transaction.annotation.Transactional;
 
-import com.vivida.social.member.MembershipStatus;
 import com.vivida.social.team.Team;
 import com.vivida.social.team.TeamRepository;
 

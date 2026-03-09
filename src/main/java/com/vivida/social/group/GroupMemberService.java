@@ -6,7 +6,6 @@ import org.springframework.web.server.ResponseStatusException;
 
 import com.vivida.auth.User;
 import com.vivida.auth.UserRepository;
-import com.vivida.social.member.MembershipStatus;
 import com.vivida.social.team.Team;
 import com.vivida.social.team.TeamRepository;
 

@@ -1,7 +1,6 @@
 package com.vivida.social.group;
 
 import java.time.LocalDateTime;
-import com.vivida.social.member.MembershipStatus;
 
 /**
  * DTO for GroupMember response - breaks circular references

@@ -2,8 +2,6 @@ package com.vivida.social.group;
 
 import org.springframework.web.bind.annotation.*;
 
-import com.vivida.social.member.MembershipStatus;
-
 import java.util.List;
 
 @RestController
