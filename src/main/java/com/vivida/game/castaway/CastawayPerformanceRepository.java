@@ -9,4 +9,7 @@ public interface CastawayPerformanceRepository extends JpaRepository<CastawayPer
     
     @Query("SELECT cp FROM CastawayPerformance cp WHERE cp.season.season = :seasonId")
     List<CastawayPerformance> findBySeasonId(@Param("seasonId") Integer seasonId);
+
+    @Query("SELECT COUNT(cp) FROM CastawayPerformance cp WHERE cp.season.season = :seasonId")
+    long countBySeasonId(@Param("seasonId") Integer seasonId);
 }

@@ -104,6 +104,33 @@ public class DraftService {
                 "No active members in group");
         }
 
+        // Worst-case safety note (snake draft):
+        // We enforce a conservative max team size using TWO bounds:
+        // 1) Consecutive-turn gap bound: others can make up to (2 * memberCount - 2) picks between
+        //    your turns, so teamSize <= availableCastaways - (2 * memberCount - 2).
+        // 2) Full-cycle starvation bound: to avoid a long-horizon scenario where only your prior picks
+        //    are repeatedly left available, cap teamSize at floor(availableCastaways / 2).
+        // Final safe max = min(bound1, bound2).
+        int memberCount = members.size();
+        int teamSize = group.getTeamSize();
+        long availableCastaways = castawayPerformanceRepository.countBySeasonId(group.getSeason().getSeason());
+        long maxByConsecutiveTurnGap = availableCastaways - (2L * memberCount - 2L);
+        long maxByFullCycleStarvation = availableCastaways / 2L;
+        long maxWorstCaseSafeTeamSize = Math.min(maxByConsecutiveTurnGap, maxByFullCycleStarvation);
+
+        if (teamSize > maxWorstCaseSafeTeamSize) {
+            throw new ResponseStatusException(
+                HttpStatus.BAD_REQUEST,
+                String.format(
+                    "Team size %d is not worst-case safe for %d members and %d castaways. Max safe team size is %d. Reduce team size or group size.",
+                    teamSize,
+                    memberCount,
+                    availableCastaways,
+                    Math.max(0L, maxWorstCaseSafeTeamSize)
+                )
+            );
+        }
+
         // Randomize member order
         Collections.shuffle(members);
         List<Integer> userIds = members.stream()
