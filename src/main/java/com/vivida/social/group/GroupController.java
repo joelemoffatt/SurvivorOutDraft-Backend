@@ -1,5 +1,7 @@
 package com.vivida.social.group;
 
+import com.vivida.draft.DraftService;
+import com.vivida.draft.DraftStyle;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
@@ -17,11 +19,16 @@ import java.util.stream.Collectors;
 public class GroupController {
 
     private final GroupService groupService;
+    private final DraftService draftService;
     private final UserRepository userRepository;
     private final SeasonRepository seasonRepository;
 
-    public GroupController(GroupService groupService, UserRepository userRepository, SeasonRepository seasonRepository) {
+    public GroupController(GroupService groupService,
+                           DraftService draftService,
+                           UserRepository userRepository,
+                           SeasonRepository seasonRepository) {
         this.groupService = groupService;
+        this.draftService = draftService;
         this.userRepository = userRepository;
         this.seasonRepository = seasonRepository;
     }
@@ -71,6 +78,13 @@ public class GroupController {
         if (request.getSeason() == null || request.getSeason().getId() == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Season is required");
         }
+        if (request.getTeamSize() == null || request.getTeamSize() <= 0) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Team size must be a positive integer");
+        }
+        if (request.getLatestEpisodeWatched() == null || request.getLatestEpisodeWatched() < 0) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Latest episode watched is required and must be 0 or greater");
+        }
 
         // Fetch User (admin) entity
         User admin = userRepository.findById(request.getAdmin().getId())
@@ -90,12 +104,22 @@ public class GroupController {
         group.setAdmin(admin);
         group.setSeason(season);
         group.setTeamSize(request.getTeamSize());
-        group.setLatestEpisodeWatched(0);
+        group.setLatestEpisodeWatched(request.getLatestEpisodeWatched());
         group.setStatus(GroupStatus.PENDING);
 
         // Save group and automatically add admin as member
         Group savedGroup = groupService.createGroupWithAdmin(group);
-        return GroupDTO.fromEntity(savedGroup);
+        
+        // If a draft style is provided, create a pending draft for this group
+        draftService.createPendingDraftForGroup(
+            savedGroup,
+            admin,
+            request.getStyle() != null ? request.getStyle() : DraftStyle.SNAKE,
+            request.getTeamSize(),
+            request.getScheduledAt()
+        );
+
+        return GroupDTO.fromEntity(groupService.getGroupById(savedGroup.getId()));
     }
 
     @PutMapping

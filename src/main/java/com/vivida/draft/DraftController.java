@@ -1,7 +1,6 @@
 package com.vivida.draft;
 
 import com.vivida.auth.User;
-import org.springframework.http.HttpStatus;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
@@ -15,21 +14,6 @@ public class DraftController {
 
     public DraftController(DraftService draftService) {
         this.draftService = draftService;
-    }
-
-    // ── Create ─────────────────────────────────────────────────────────────────
-
-    /**
-     * POST /api/v1/drafts
-     * Create a new draft (PENDING) for a group.
-     * Body: { groupId, style, teamSize, scheduledAt? }
-     */
-    @PostMapping
-    @ResponseStatus(HttpStatus.CREATED)
-    public DraftDTO createDraft(@RequestBody CreateDraftRequest request,
-                                Authentication authentication) {
-        User user = (User) authentication.getPrincipal();
-        return draftService.createDraft(request, user);
     }
 
     // ── Read ───────────────────────────────────────────────────────────────────

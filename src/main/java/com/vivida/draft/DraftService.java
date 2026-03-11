@@ -70,14 +70,19 @@ public class DraftService {
     // ═══════════════════════════════════════════════════════════════════════════
 
     /**
-     * Create a new draft for a group in PENDING status.
+     * Create a new pending draft for a group during group setup.
      * No participants or picks are generated yet — that happens at startDraft().
      */
-    public DraftDTO createDraft(CreateDraftRequest req, User requestingUser) {
-        Group group = groupRepository.findById(req.getGroupId())
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Group not found"));
+    public Draft createPendingDraftForGroup(Group group,
+                                            User requestingUser,
+                                            DraftStyle style,
+                                            Integer teamSize,
+                                            LocalDateTime scheduledAt) {
+        if (group == null || group.getId() == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Group is required");
+        }
 
-        if (req.getTeamSize() == null || req.getTeamSize() <= 0) {
+        if (teamSize == null || teamSize <= 0) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "teamSize must be a positive integer");
         }
 
@@ -94,16 +99,18 @@ public class DraftService {
         draft.setSeason(group.getSeason());
         draft.setCreatedBy(requestingUser);
         draft.setStatus(DraftStatus.PENDING);
-        draft.setStyle(req.getStyle() != null ? req.getStyle() : DraftStyle.SNAKE);
-        draft.setTeamSize(req.getTeamSize());
-        draft.setScheduledAt(req.getScheduledAt());
+        draft.setStyle(style != null ? style : DraftStyle.SNAKE);
+        draft.setTeamSize(teamSize);
+        draft.setScheduledAt(scheduledAt);
         draft.setTotalParticipants(0);
         draft.setTotalCastaways(0);
         draft.setTotalPicks(0);
         draft.setCurrentPickNumber(1);
 
         draftRepository.save(draft);
-        return buildDraftDTO(loadFull(draft.getId()));
+        group.setDraft(draft);
+        groupRepository.save(group);
+        return draft;
     }
 
     // ═══════════════════════════════════════════════════════════════════════════

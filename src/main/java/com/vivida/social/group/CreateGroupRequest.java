@@ -1,9 +1,12 @@
 package com.vivida.social.group;
 
+import com.vivida.draft.DraftStyle;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+
+import java.time.LocalDateTime;
 
 @Getter
 @Setter
@@ -14,6 +17,9 @@ public class CreateGroupRequest {
     private AdminRef admin;
     private SeasonRef season;
     private Integer teamSize;
+    private Integer latestEpisodeWatched;
+    private DraftStyle style;
+    private LocalDateTime scheduledAt;
 
     @Getter
     @Setter
