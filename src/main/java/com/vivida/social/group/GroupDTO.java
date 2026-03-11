@@ -20,6 +20,7 @@ public class GroupDTO {
     private LocalDateTime draftStartTime;
     private LocalDateTime draftEndTime;
     private Integer teamSize;
+    private Integer latestEpisodeWatched;
     private String draftOrder;
     private GroupStatus status;
     private LocalDateTime createdAt;
@@ -51,6 +52,7 @@ public class GroupDTO {
         dto.setDraftStartTime(group.getDraftStartTime());
         dto.setDraftEndTime(group.getDraftEndTime());
         dto.setTeamSize(group.getTeamSize());
+        dto.setLatestEpisodeWatched(group.getLatestEpisodeWatched());
         dto.setDraftOrder(group.getDraftOrder());
         dto.setStatus(group.getStatus());
         dto.setCreatedAt(group.getCreatedAt());

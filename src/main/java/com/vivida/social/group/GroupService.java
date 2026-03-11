@@ -5,6 +5,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.vivida.game.episode.EpisodeRepository;
 import com.vivida.social.team.Team;
 import com.vivida.social.team.TeamRepository;
 
@@ -16,11 +17,16 @@ public class GroupService {
     private final GroupRepository groupRepository;
     private final GroupMemberRepository groupMemberRepository;
     private final TeamRepository teamRepository;
+    private final EpisodeRepository episodeRepository;
 
-    public GroupService(GroupRepository groupRepository, GroupMemberRepository groupMemberRepository, TeamRepository teamRepository) {
+    public GroupService(GroupRepository groupRepository,
+                        GroupMemberRepository groupMemberRepository,
+                        TeamRepository teamRepository,
+                        EpisodeRepository episodeRepository) {
         this.groupRepository = groupRepository;
         this.groupMemberRepository = groupMemberRepository;
         this.teamRepository = teamRepository;
+        this.episodeRepository = episodeRepository;
     }
 
     public List<Group> getAllGroups() {
@@ -75,6 +81,29 @@ public class GroupService {
 
     public void updateGroup(Group group) {
         groupRepository.save(group);
+    }
+
+    @Transactional
+    public Group updateLatestEpisodeWatched(Integer groupId, Integer latestEpisodeWatched) {
+        if (latestEpisodeWatched == null || latestEpisodeWatched < 0) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "latestEpisodeWatched must be 0 or greater");
+        }
+
+        Group group = getGroupById(groupId);
+        int maxEpisodeForSeason = episodeRepository.findBySeasonId(group.getSeason().getSeason()).stream()
+                .mapToInt(e -> e.getEpisodeNumber() != null ? e.getEpisodeNumber() : 0)
+                .max()
+                .orElse(0);
+
+        if (latestEpisodeWatched > maxEpisodeForSeason) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "latestEpisodeWatched cannot be greater than the latest episode in this season (" +
+                            maxEpisodeForSeason + ")");
+        }
+
+        group.setLatestEpisodeWatched(latestEpisodeWatched);
+        return groupRepository.save(group);
     }
 
     public void deleteGroupById(int id) {

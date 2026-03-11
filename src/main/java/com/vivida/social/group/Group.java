@@ -45,6 +45,13 @@ public class Group {
 
     private Integer teamSize;
 
+    /**
+     * Highest episode number this group has watched for its season.
+     * Used to hide spoilers by removing castaways booted in watched episodes.
+     */
+    @Column(nullable = false)
+    private Integer latestEpisodeWatched;
+
     @Column(columnDefinition = "TEXT")
     private String draftOrder;  // JSON array of user IDs in randomized draft order
 
@@ -69,6 +76,9 @@ public class Group {
         createdAt = LocalDateTime.now();
         if (status == null) {
             status = GroupStatus.PENDING;
+        }
+        if (latestEpisodeWatched == null) {
+            latestEpisodeWatched = 0;
         }
     }
 }

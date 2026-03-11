@@ -90,6 +90,7 @@ public class GroupController {
         group.setAdmin(admin);
         group.setSeason(season);
         group.setTeamSize(request.getTeamSize());
+        group.setLatestEpisodeWatched(0);
         group.setStatus(GroupStatus.PENDING);
 
         // Save group and automatically add admin as member
@@ -100,6 +101,17 @@ public class GroupController {
     @PutMapping
     public void updateGroup(@RequestBody Group group) {
         groupService.updateGroup(group);
+    }
+
+    @PatchMapping("{id}/watched-episode")
+    public GroupDTO updateLatestWatchedEpisode(@PathVariable Integer id,
+                                               @RequestBody UpdateWatchedEpisodeRequest request) {
+        if (request == null || request.getLatestEpisodeWatched() == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "latestEpisodeWatched is required");
+        }
+        Group updated = groupService.updateLatestEpisodeWatched(id, request.getLatestEpisodeWatched());
+        return GroupDTO.fromEntity(updated);
     }
 
     @DeleteMapping("{id}")
