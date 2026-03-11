@@ -1,502 +1,442 @@
 package com.vivida.draft;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.vivida.auth.User;
+import com.vivida.game.boot.BootRepository;
 import com.vivida.game.castaway.CastawayPerformance;
-import com.vivida.game.castaway.CastawayPerformanceDTO;
 import com.vivida.game.castaway.CastawayPerformanceRepository;
-import com.vivida.scoring.PointCalculationService;
-import com.vivida.social.group.*;
-import com.vivida.social.team.*;
+import com.vivida.social.group.Group;
+import com.vivida.social.group.GroupMember;
+import com.vivida.social.group.GroupMemberRepository;
+import com.vivida.social.group.GroupRepository;
+import com.vivida.social.group.GroupStatus;
+import com.vivida.social.group.MembershipStatus;
+import com.vivida.social.team.Team;
+import com.vivida.social.team.TeamRepository;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.time.LocalDateTime;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Optional;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 @Service
 @Transactional
 public class DraftService {
 
+    private final DraftRepository draftRepository;
+    private final DraftParticipantRepository participantRepository;
+    private final DraftPickRepository pickRepository;
     private final GroupRepository groupRepository;
     private final GroupMemberRepository groupMemberRepository;
     private final TeamRepository teamRepository;
-    private final TeamCastawayRepository teamCastawayRepository;
     private final CastawayPerformanceRepository castawayPerformanceRepository;
-    private final PointCalculationService pointCalculationService;
-    private final ObjectMapper objectMapper;
+    private final BootRepository bootRepository;
 
-    public DraftService(GroupRepository groupRepository,
-                       GroupMemberRepository groupMemberRepository,
-                       TeamRepository teamRepository,
-                       TeamCastawayRepository teamCastawayRepository,
-                       CastawayPerformanceRepository castawayPerformanceRepository,
-                       PointCalculationService pointCalculationService) {
+    public DraftService(DraftRepository draftRepository,
+                        DraftParticipantRepository participantRepository,
+                        DraftPickRepository pickRepository,
+                        GroupRepository groupRepository,
+                        GroupMemberRepository groupMemberRepository,
+                        TeamRepository teamRepository,
+                        CastawayPerformanceRepository castawayPerformanceRepository,
+                        BootRepository bootRepository) {
+        this.draftRepository = draftRepository;
+        this.participantRepository = participantRepository;
+        this.pickRepository = pickRepository;
         this.groupRepository = groupRepository;
         this.groupMemberRepository = groupMemberRepository;
         this.teamRepository = teamRepository;
-        this.teamCastawayRepository = teamCastawayRepository;
         this.castawayPerformanceRepository = castawayPerformanceRepository;
-        this.pointCalculationService = pointCalculationService;
-        this.objectMapper = new ObjectMapper();
+        this.bootRepository = bootRepository;
     }
 
-    /**
-     * Parse draft order JSON to list of user IDs
-     */
-    private List<Integer> parseDraftOrder(String draftOrderJson) {
-        if (draftOrderJson == null || draftOrderJson.trim().isEmpty()) {
-            return new ArrayList<>();
-        }
-        try {
-            return objectMapper.readValue(draftOrderJson, new TypeReference<List<Integer>>() {});
-        } catch (JsonProcessingException e) {
-            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to parse draft order");
-        }
-    }
+    // ═══════════════════════════════════════════════════════════════════════════
+    // Create
+    // ═══════════════════════════════════════════════════════════════════════════
 
     /**
-     * Serialize list of user IDs to JSON
+     * Create a new draft for a group in PENDING status.
+     * No participants or picks are generated yet — that happens at startDraft().
      */
-    private String serializeDraftOrder(List<Integer> userIds) {
-        try {
-            return objectMapper.writeValueAsString(userIds);
-        } catch (JsonProcessingException e) {
-            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to serialize draft order");
-        }
-    }
-
-    /**
-     * Start the draft for a group
-     * - Validates group is in PENDING status
-     * - Randomizes member order
-     * - Stores draft order as JSON
-     * - Sets status to DRAFTING
-     */
-    public DraftStateDTO startDraft(Integer groupId) {
-        Group group = groupRepository.findById(groupId)
+    public DraftDTO createDraft(CreateDraftRequest req, User requestingUser) {
+        Group group = groupRepository.findById(req.getGroupId())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Group not found"));
 
-        // Validate group status
-        if (group.getStatus() != GroupStatus.PENDING) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, 
-                "Draft already started or group is not in PENDING status");
+        if (req.getTeamSize() == null || req.getTeamSize() <= 0) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "teamSize must be a positive integer");
         }
 
-        // Validate team size is set
-        if (group.getTeamSize() == null || group.getTeamSize() <= 0) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, 
-                "Team size must be set before starting draft");
+        // Guard: only one active/pending draft per group
+        boolean alreadyExists = draftRepository.existsByGroupIdAndStatus(group.getId(), DraftStatus.DRAFTING)
+                || draftRepository.existsByGroupIdAndStatus(group.getId(), DraftStatus.PENDING);
+        if (alreadyExists) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "A PENDING or DRAFTING draft already exists for this group");
         }
 
-        // Get all active group members
-        List<GroupMember> members = groupMemberRepository.findByGroupId(groupId).stream()
-                .filter(m -> m.getStatus() == com.vivida.social.group.MembershipStatus.ACCEPTED)
+        Draft draft = new Draft();
+        draft.setGroup(group);
+        draft.setSeason(group.getSeason());
+        draft.setCreatedBy(requestingUser);
+        draft.setStatus(DraftStatus.PENDING);
+        draft.setStyle(req.getStyle() != null ? req.getStyle() : DraftStyle.SNAKE);
+        draft.setTeamSize(req.getTeamSize());
+        draft.setScheduledAt(req.getScheduledAt());
+        draft.setTotalParticipants(0);
+        draft.setTotalCastaways(0);
+        draft.setTotalPicks(0);
+        draft.setCurrentPickNumber(1);
+
+        draftRepository.save(draft);
+        return DraftDTO.from(loadFull(draft.getId()));
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // Start
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    /**
+     * Transition from PENDING → DRAFTING:
+     *  1. Shuffle group members and create DraftParticipants
+     *  2. Count available CastawayPerformances (no snapshot rows — frontend queries the pool)
+     *  3. Pre-create all DraftPick slots based on style + teamSize
+     *  4. Set currentTurnUser to the first picker
+     */
+    public DraftDTO startDraft(Integer draftId) {
+        Draft draft = loadFull(draftId);
+
+        if (draft.getStatus() != DraftStatus.PENDING) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Draft is not in PENDING status (current: " + draft.getStatus() + ")");
+        }
+
+        // ── 1. Participants from accepted group members ──────────────────────
+        List<GroupMember> accepted = groupMemberRepository
+                .findByGroupId(draft.getGroup().getId()).stream()
+                .filter(m -> m.getStatus() == MembershipStatus.ACCEPTED)
                 .collect(Collectors.toList());
 
-        if (members.isEmpty()) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, 
-                "No active members in group");
+        if (accepted.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "No accepted members in group");
         }
 
-        // Worst-case safety note (snake draft):
-        // We enforce a conservative max team size using TWO bounds:
-        // 1) Consecutive-turn gap bound: others can make up to (2 * memberCount - 2) picks between
-        //    your turns, so teamSize <= availableCastaways - (2 * memberCount - 2).
-        // 2) Full-cycle starvation bound: to avoid a long-horizon scenario where only your prior picks
-        //    are repeatedly left available, cap teamSize at floor(availableCastaways / 2).
-        // Final safe max = min(bound1, bound2).
-        int memberCount = members.size();
-        int teamSize = group.getTeamSize();
-        long availableCastaways = castawayPerformanceRepository.countBySeasonId(group.getSeason().getSeason());
-        long maxByConsecutiveTurnGap = availableCastaways - (2L * memberCount - 2L);
-        long maxByFullCycleStarvation = availableCastaways / 2L;
-        long maxWorstCaseSafeTeamSize = Math.min(maxByConsecutiveTurnGap, maxByFullCycleStarvation);
+        Collections.shuffle(accepted);
 
-        if (teamSize > maxWorstCaseSafeTeamSize) {
-            throw new ResponseStatusException(
-                HttpStatus.BAD_REQUEST,
-                String.format(
-                    "Team size %d is not worst-case safe for %d members and %d castaways. Max safe team size is %d. Reduce team size or group size.",
-                    teamSize,
-                    memberCount,
-                    availableCastaways,
-                    Math.max(0L, maxWorstCaseSafeTeamSize)
-                )
-            );
+        List<DraftParticipant> participants = new ArrayList<>();
+        for (int i = 0; i < accepted.size(); i++) {
+            GroupMember gm = accepted.get(i);
+            Team team = teamRepository.findByGroupIdAndUserId(draft.getGroup().getId(), gm.getUser().getId())
+                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                            "Member " + gm.getUser().getUsername() + " has no team in this group"));
+
+            DraftParticipant dp = new DraftParticipant();
+            dp.setDraft(draft);
+            dp.setUser(gm.getUser());
+            dp.setTeam(team);
+            dp.setDraftPosition(i);
+            dp.setPicksMade(0);
+            dp.setActive(true);
+            participants.add(dp);
+        }
+        participantRepository.saveAll(participants);
+        draft.setParticipants(participants);
+
+        // ── 2. Count the castaway pool (no snapshot rows needed) ─────────────
+        List<CastawayPerformance> allCastaways = findAvailableCastawaysForDraft(draft);
+        if (allCastaways.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "No available castaways remain after applying watched-episode boots");
         }
 
-        // Randomize member order
-        Collections.shuffle(members);
-        List<Integer> userIds = members.stream()
-                .map(m -> m.getUser().getId())
-                .collect(Collectors.toList());
+        // ── 3. Pre-create all pick slots ─────────────────────────────────────
+        int totalParticipants = participants.size();
+        int totalPicks = totalParticipants * draft.getTeamSize();
+        List<DraftPick> picks = new ArrayList<>();
 
-        // Store draft order
-        group.setDraftOrder(serializeDraftOrder(userIds));
-        group.setDraftStartTime(LocalDateTime.now());
+        for (int pickNum = 1; pickNum <= totalPicks; pickNum++) {
+            int position = calculatePosition(pickNum, totalParticipants, draft.getStyle());
+            DraftParticipant participant = participants.get(position);
+            int round = (pickNum - 1) / totalParticipants;
+
+            DraftPick pick = new DraftPick();
+            pick.setDraft(draft);
+            pick.setPickNumber(pickNum);
+            pick.setRoundNumber(round + 1); // 1-based
+            pick.setDraftPosition(position);
+            pick.setUser(participant.getUser());
+            pick.setTeam(participant.getTeam());
+            picks.add(pick);
+        }
+        pickRepository.saveAll(picks);
+        draft.setPicks(picks);
+
+        // ── 4. Finalise header ───────────────────────────────────────────────
+        draft.setStatus(DraftStatus.DRAFTING);
+        draft.setStartedAt(LocalDateTime.now());
+        draft.setTotalParticipants(totalParticipants);
+        draft.setTotalCastaways(allCastaways.size());
+        draft.setTotalPicks(totalPicks);
+        draft.setCurrentPickNumber(1);
+        draft.setMaxDraftsPerCastaway(1);
+        draft.setCurrentTurnUser(participants.get(0).getUser());
+
+        // Also update the parent Group status
+        // Todo: Consider removing unnecessary coupling between Group and Draft statuses — can a Group be in DRAFTING status without an active Draft?
+        Group group = draft.getGroup();
         group.setStatus(GroupStatus.DRAFTING);
+        group.setDraftStartTime(LocalDateTime.now());
         groupRepository.save(group);
 
-        return getDraftState(groupId);
+        draftRepository.save(draft);
+        return DraftDTO.from(loadFull(draftId));
     }
 
-    /**
-     * Get complete draft state
-     */
-    public DraftStateDTO getDraftState(Integer groupId) {
-        Group group = groupRepository.findById(groupId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Group not found"));
-
-        if (group.getDraftOrder() == null || group.getDraftOrder().trim().isEmpty()) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Draft has not been started");
-        }
-
-        List<Integer> userIds = parseDraftOrder(group.getDraftOrder());
-        int totalPicksMade = teamCastawayRepository.countByTeamGroupId(groupId);
-        int teamSize = group.getTeamSize() != null ? group.getTeamSize() : 0;
-        int totalPicksNeeded = userIds.size() * teamSize;
-
-        // Build draft order with pick counts
-        List<DraftPositionDTO> draftOrder = buildDraftOrder(group, userIds, totalPicksMade, teamSize);
-
-        // Get current turn
-        DraftPositionDTO currentTurn = getCurrentTurnPosition(group, userIds, totalPicksMade);
-
-        // Get all teams
-        List<TeamDTO> teams = teamRepository.findByGroupId(groupId).stream()
-                .map(TeamDTO::new)
-                .collect(Collectors.toList());
-
-        // Get undrafted castaways
-        List<CastawayPerformanceDTO> undraftedCastaways = getUndraftedCastaways(groupId).stream()
-                .map(CastawayPerformanceDTO::new)
-                .collect(Collectors.toList());
-
-        // Check if complete
-        boolean isComplete = isDraftComplete(group);
-
-        return new DraftStateDTO(
-                GroupDTO.fromEntity(group),
-                draftOrder,
-                currentTurn,
-                totalPicksMade + 1,
-                totalPicksNeeded,
-                teams,
-                undraftedCastaways,
-                isComplete
-        );
-    }
+    // ═══════════════════════════════════════════════════════════════════════════
+    // Pick
+    // ═══════════════════════════════════════════════════════════════════════════
 
     /**
-     * Build draft order with statistics for each position
+     * Fill in the current pick slot with a castaway.
+     * Validates that:
+     *  - draft is DRAFTING
+     *  - userId is whose turn it currently is
+     *  - castaway is in the draft pool and not yet drafted
      */
-    private List<DraftPositionDTO> buildDraftOrder(Group group, List<Integer> userIds, 
-                                                   int totalPicksMade, int teamSize) {
-        List<DraftPositionDTO> draftOrder = new ArrayList<>();
-        
-        for (int i = 0; i < userIds.size(); i++) {
-            Integer userId = userIds.get(i);
-            
-            // Get user's team
-            Optional<Team> teamOpt = teamRepository.findByGroupIdAndUserId(group.getId(), userId);
-            if (teamOpt.isEmpty()) {
-                continue; // Skip if user doesn't have a team
-            }
-            
-            Team team = teamOpt.get();
-            int pickCount = teamCastawayRepository.findByTeamId(team.getId()).size();
-            
-            // Calculate next pick number
-            Integer nextPickNumber = calculateNextPickForPosition(i, userIds.size(), totalPicksMade, teamSize);
-            
-            draftOrder.add(new DraftPositionDTO(i, team.getUser(), pickCount, nextPickNumber));
-        }
-        
-        return draftOrder;
-    }
+    public DraftDTO makePick(Integer draftId, Integer userId, Integer castawayPerformanceId) {
+        Draft draft = loadFull(draftId);
 
-    /**
-     * Calculate when a position will pick next
-     */
-    private Integer calculateNextPickForPosition(int position, int numPlayers, 
-                                                 int picksMade, int teamSize) {
-        int maxPicks = numPlayers * teamSize;
-        
-        // Check each future pick
-        for (int pickNum = picksMade + 1; pickNum <= maxPicks; pickNum++) {
-            int pickPosition = calculatePositionForPickNumber(pickNum, numPlayers);
-            if (pickPosition == position) {
-                return pickNum;
-            }
-        }
-        
-        return null; // This position is done picking
-    }
-
-    /**
-     * Get current turn position
-     */
-    private DraftPositionDTO getCurrentTurnPosition(Group group, List<Integer> userIds, int totalPicksMade) {
-        if (isDraftComplete(group)) {
-            return null;
-        }
-
-        int nextPickNumber = totalPicksMade + 1;
-        int position = calculatePositionForPickNumber(nextPickNumber, userIds.size());
-        Integer userId = userIds.get(position);
-
-        Optional<Team> teamOpt = teamRepository.findByGroupIdAndUserId(group.getId(), userId);
-        if (teamOpt.isEmpty()) {
-            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, 
-                "User in draft order does not have a team");
-        }
-
-        Team team = teamOpt.get();
-        int pickCount = teamCastawayRepository.findByTeamId(team.getId()).size();
-
-        return new DraftPositionDTO(position, team.getUser(), pickCount, nextPickNumber);
-    }
-
-    /**
-     * Calculate which position picks for a given pick number using snake draft
-     */
-    private int calculatePositionForPickNumber(int pickNumber, int numPlayers) {
-        int round = (pickNumber - 1) / numPlayers;
-        int position;
-        
-        if (round % 2 == 0) {
-            // Even rounds: forward (0, 1, 2, 3)
-            position = (pickNumber - 1) % numPlayers;
-        } else {
-            // Odd rounds: backward (3, 2, 1, 0)
-            position = numPlayers - 1 - ((pickNumber - 1) % numPlayers);
-        }
-        
-        return position;
-    }
-
-    /**
-     * Get user whose turn it is
-     */
-    public User getCurrentTurn(Integer groupId) {
-        Group group = groupRepository.findById(groupId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Group not found"));
-
-        if (isDraftComplete(group)) {
-            return null;
-        }
-
-        List<Integer> userIds = parseDraftOrder(group.getDraftOrder());
-        int totalPicks = teamCastawayRepository.countByTeamGroupId(groupId);
-        int pickNumber = totalPicks + 1;
-        
-        int position = calculatePositionForPickNumber(pickNumber, userIds.size());
-        Integer userId = userIds.get(position);
-
-        Optional<Team> teamOpt = teamRepository.findByGroupIdAndUserId(group.getId(), userId);
-        if (teamOpt.isEmpty()) {
-            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, 
-                "User in draft order does not have a team");
-        }
-
-        return teamOpt.get().getUser();
-    }
-
-    /**
-     * Make a draft pick
-     */
-    public DraftStateDTO makePick(Integer groupId, Integer userId, Integer castawayPerformanceId) {
-        Group group = groupRepository.findById(groupId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Group not found"));
-
-        // Validate draft is in progress
-        if (group.getStatus() != GroupStatus.DRAFTING) {
+        if (draft.getStatus() != DraftStatus.DRAFTING) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Draft is not in progress");
         }
 
-        // Validate it's this user's turn
-        User currentTurnUser = getCurrentTurn(groupId);
-        if (currentTurnUser == null || !currentTurnUser.getId().equals(userId)) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "It is not your turn to pick");
+        // Validate turn
+        if (draft.getCurrentTurnUser() == null || !draft.getCurrentTurnUser().getId().equals(userId)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "It is not your turn");
         }
 
-        // Get user's team
-        Team team = teamRepository.findByGroupIdAndUserId(groupId, userId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Team not found"));
+        // Validate the castaway exists in this season
+        CastawayPerformance castawayPerformance = castawayPerformanceRepository
+            .findByIdAndSeasonId(castawayPerformanceId, draft.getSeason().getSeason())
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                "Castaway is not part of this draft's season"));
 
-        // Validate team not already full
-        int currentRosterSize = teamCastawayRepository.findByTeamId(team.getId()).size();
-        if (currentRosterSize >= group.getTeamSize()) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Team is already full");
+        if (isBootedInWatchedEpisodes(draft, castawayPerformanceId)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "This castaway was booted in an episode your group has watched");
         }
 
-        // Validate castaway exists and is for this season
-        CastawayPerformance castawayPerformance = castawayPerformanceRepository.findById(castawayPerformanceId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Castaway not found"));
+        // Guard: same team cannot draft the same castaway twice
+        DraftParticipant currentParticipant = participantRepository
+            .findByDraftIdAndUserId(draftId, userId)
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                "User is not a participant in this draft"));
+        Integer teamId = currentParticipant.getTeam().getId();
 
-        if (!castawayPerformance.getSeason().getSeason().equals(group.getSeason().getSeason())) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Castaway is not from this season");
+        if (pickRepository.existsByDraftIdAndTeamIdAndCastawayPerformanceId(draftId, teamId, castawayPerformanceId)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                "Your team has already drafted this castaway");
         }
 
-        // Validate same team cannot draft the same castaway twice
-        if (teamCastawayRepository.existsByTeamIdAndCastawayPerformanceId(team.getId(), castawayPerformanceId)) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Your team already drafted this castaway");
+        // Guard: castaway has reached the global draft cap
+        long timesDrafted = pickRepository.countByDraftIdAndCastawayPerformanceId(draftId, castawayPerformanceId);
+        if (timesDrafted >= draft.getMaxDraftsPerCastaway()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                "This castaway has already been drafted the maximum number of times (" +
+                    draft.getMaxDraftsPerCastaway() + ")");
         }
 
-        // Validate per-castaway global cap in this group.
-        // Cap increases dynamically: 1, then 2, then 3... only when all castaways reached prior cap.
-        int maxAllowedPicks = getCurrentMaxAllowedPicks(groupId, group.getSeason().getSeason());
-        int currentCastawayPickCount = teamCastawayRepository
-                .countByGroupIdAndCastawayPerformanceId(groupId, castawayPerformanceId);
-        if (currentCastawayPickCount >= maxAllowedPicks) {
-            throw new ResponseStatusException(
-                    HttpStatus.BAD_REQUEST,
-                    "Castaway has reached max draft limit (" + maxAllowedPicks + ")"
-            );
+        // Fill in the current pick slot
+        DraftPick currentPick = pickRepository
+                .findByDraftIdAndPickNumber(draftId, draft.getCurrentPickNumber())
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR,
+                        "Pick slot " + draft.getCurrentPickNumber() + " not found"));
+
+        currentPick.setCastawayPerformance(castawayPerformance);
+        currentPick.setPickedAt(LocalDateTime.now());
+        pickRepository.save(currentPick);
+
+        // Update participant pick count
+        currentParticipant.setPicksMade(currentParticipant.getPicksMade() + 1);
+        participantRepository.save(currentParticipant);
+
+        // Advance pick number
+        int nextPickNumber = draft.getCurrentPickNumber() + 1;
+        draft.setCurrentPickNumber(nextPickNumber);
+        // Maybe increment the per-castaway cap:
+        // once every castaway has been drafted maxDraftsPerCastaway times, raise the cap by 1
+        long totalFilledPicks = pickRepository.countByDraftIdAndCastawayPerformanceIsNotNull(draftId);
+        if (draft.getTotalCastaways() > 0 && totalFilledPicks % draft.getTotalCastaways() == 0) {
+            draft.setMaxDraftsPerCastaway(draft.getMaxDraftsPerCastaway() + 1);
         }
 
-        // Calculate pick number
-        int pickNumber = teamCastawayRepository.countByTeamGroupId(groupId) + 1;
 
-        // Create TeamCastaway
-        TeamCastaway teamCastaway = new TeamCastaway();
-        teamCastaway.setTeam(team);
-        teamCastaway.setCastawayPerformance(castawayPerformance);
-        teamCastaway.setDraftOrder(pickNumber);
-        teamCastaway.setPoints(0); // TODO: Calculate initial points based on group settings if needed
-        teamCastawayRepository.save(teamCastaway);
-
-        // Check if draft should auto-complete
-        if (isDraftComplete(group)) {
-            completeDraft(groupId);
+        if (nextPickNumber > draft.getTotalPicks()) {
+            // All slots filled → auto-complete
+            completeDraft(draft);
+        } else {
+            // Find who picks next
+            DraftPick nextPick = pickRepository
+                    .findByDraftIdAndPickNumber(draftId, nextPickNumber)
+                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR,
+                            "Next pick slot not found"));
+            draft.setCurrentTurnUser(nextPick.getUser());
         }
 
-        return getDraftState(groupId);
+        draftRepository.save(draft);
+        return DraftDTO.from(loadFull(draftId));
     }
 
-    /**
-     * Get list of available castaways using dynamic global cap.
-     * Cap increases from 1 -> 2 -> 3... as full reactivation cycles complete.
-     */
-    public List<CastawayPerformance> getUndraftedCastaways(Integer groupId) {
-        Group group = groupRepository.findById(groupId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Group not found"));
+    // ═══════════════════════════════════════════════════════════════════════════
+    // Complete / Reset
+    // ═══════════════════════════════════════════════════════════════════════════
 
-        // Get all castaways for this season
-        List<CastawayPerformance> allCastaways = castawayPerformanceRepository
-                .findBySeasonId(group.getSeason().getSeason());
-
-        // Count current picks for each castaway in this group
-        Map<Integer, Long> castawayPickCounts = teamCastawayRepository.findByTeamGroupIdOrderByDraftOrderAsc(groupId)
-            .stream()
-            .collect(Collectors.groupingBy(tc -> tc.getCastawayPerformance().getId(), Collectors.counting()));
-
-        int maxAllowedPicks = calculateCurrentMaxAllowedPicks(allCastaways, castawayPickCounts);
-
-        return allCastaways.stream()
-            .filter(cp -> castawayPickCounts.getOrDefault(cp.getId(), 0L) < maxAllowedPicks)
-                .collect(Collectors.toList());
+    public DraftDTO completeDraftById(Integer draftId) {
+        Draft draft = loadFull(draftId);
+        completeDraft(draft);
+        draftRepository.save(draft);
+        return DraftDTO.from(loadFull(draftId));
     }
 
-    /**
-     * Calculate dynamic max picks per castaway for current draft state.
-     * Uses minimum pick count among all castaways + 1.
-     */
-    private int getCurrentMaxAllowedPicks(Integer groupId, Integer seasonId) {
-        List<CastawayPerformance> allCastaways = castawayPerformanceRepository.findBySeasonId(seasonId);
+    private void completeDraft(Draft draft) {
+        draft.setStatus(DraftStatus.COMPLETED);
+        draft.setCompletedAt(LocalDateTime.now());
+        draft.setCurrentTurnUser(null);
 
-        Map<Integer, Long> castawayPickCounts = teamCastawayRepository.findByTeamGroupIdOrderByDraftOrderAsc(groupId)
-                .stream()
-                .collect(Collectors.groupingBy(tc -> tc.getCastawayPerformance().getId(), Collectors.counting()));
-
-        return calculateCurrentMaxAllowedPicks(allCastaways, castawayPickCounts);
-    }
-
-    private int calculateCurrentMaxAllowedPicks(List<CastawayPerformance> allCastaways, Map<Integer, Long> castawayPickCounts) {
-        if (allCastaways.isEmpty()) {
-            return 1;
-        }
-
-        long minPickCount = allCastaways.stream()
-                .mapToLong(cp -> castawayPickCounts.getOrDefault(cp.getId(), 0L))
-                .min()
-                .orElse(0L);
-
-        return (int) minPickCount + 1;
-    }
-
-    /**
-     * Check if draft is complete
-     */
-    public boolean isDraftComplete(Group group) {
-        if (group.getTeamSize() == null || group.getTeamSize() <= 0) {
-            return false;
-        }
-
-        List<Team> teams = teamRepository.findByGroupId(group.getId());
-        
-        // Check if all teams have full rosters
-        for (Team team : teams) {
-            int rosterSize = teamCastawayRepository.findByTeamId(team.getId()).size();
-            if (rosterSize < group.getTeamSize()) {
-                return false;
-            }
-        }
-
-        return true;
-    }
-
-    /**
-     * Complete the draft
-     */
-    public void completeDraft(Integer groupId) {
-        Group group = groupRepository.findById(groupId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Group not found"));
-
-        // Recalculate points for all teams now that draft is finalized
-        List<Team> teams = teamRepository.findByGroupId(groupId);
-        for (Team team : teams) {
-            pointCalculationService.calculateAndUpdateTeamPoints(team.getId());
-            // Todo: If group settings require, also calculate points from previous events for drafted castaways and add to team points
-        }
-
+        Group group = draft.getGroup();
         group.setStatus(GroupStatus.ACTIVE);
         group.setDraftEndTime(LocalDateTime.now());
         groupRepository.save(group);
     }
 
-    /**
-     * Reset the draft - removes all picks and resets group to PENDING status
-     */
-    public void resetDraft(Integer groupId) {
-        Group group = groupRepository.findById(groupId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Group not found"));
+    /** Clear all picks and castaways, return to PENDING for reconfiguration. */
+    public DraftDTO resetDraft(Integer draftId) {
+        Draft draft = loadFull(draftId);
 
-        // Delete all draft picks for teams in this group
-        List<Team> teams = teamRepository.findByGroupId(groupId);
-        for (Team team : teams) {
-            List<TeamCastaway> picks = teamCastawayRepository.findByTeamId(team.getId());
-            teamCastawayRepository.deleteAll(picks);
-        }
+        pickRepository.deleteAll(draft.getPicks());
+        participantRepository.deleteAll(draft.getParticipants());
 
-        // Reset group status back to PENDING
+        draft.getPicks().clear();
+        draft.getParticipants().clear();
+
+        draft.setStatus(DraftStatus.PENDING);
+        draft.setStartedAt(null);
+        draft.setCompletedAt(null);
+        draft.setMaxDraftsPerCastaway(1);
+        draft.setCurrentPickNumber(1);
+        draft.setCurrentTurnUser(null);
+        draft.setTotalParticipants(0);
+        draft.setTotalCastaways(0);
+        draft.setTotalPicks(0);
+
+        Group group = draft.getGroup();
         group.setStatus(GroupStatus.PENDING);
         group.setDraftStartTime(null);
         group.setDraftEndTime(null);
         groupRepository.save(group);
+
+        draftRepository.save(draft);
+        return DraftDTO.from(loadFull(draftId));
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // Read
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    public DraftDTO getDraft(Integer draftId) {
+        return DraftDTO.from(loadFull(draftId));
     }
 
     /**
-     * Check if it's a specific user's turn
+     * Get the most recent draft for a group (PENDING or DRAFTING preferred,
+     * otherwise the latest by createdAt).
      */
-    public boolean isUserTurn(Integer groupId, Integer userId) {
-        User currentTurn = getCurrentTurn(groupId);
-        return currentTurn != null && currentTurn.getId().equals(userId);
+    public DraftDTO getDraftForGroup(Integer groupId) {
+        // Prefer active one first
+        Optional<Draft> active = draftRepository.findByGroupIdAndStatus(groupId, DraftStatus.DRAFTING);
+        if (active.isPresent()) return DraftDTO.from(loadFull(active.get().getId()));
+
+        Optional<Draft> pending = draftRepository.findByGroupIdAndStatus(groupId, DraftStatus.PENDING);
+        if (pending.isPresent()) return DraftDTO.from(loadFull(pending.get().getId()));
+
+        Draft latest = draftRepository.findFirstByGroupIdOrderByCreatedAtDesc(groupId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                        "No draft found for group " + groupId));
+        return DraftDTO.from(loadFull(latest.getId()));
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // Helpers
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    /**
+     * Calculate which draft position (0-based) picks for a given pick number.
+     */
+    private int calculatePosition(int pickNumber, int numPlayers, DraftStyle style) {
+        switch (style) {
+            case SNAKE: {
+                int round = (pickNumber - 1) / numPlayers;
+                if (round % 2 == 0) {
+                    return (pickNumber - 1) % numPlayers;
+                } else {
+                    return numPlayers - 1 - ((pickNumber - 1) % numPlayers);
+                }
+            }
+            case ROUND_ROBIN:
+            case LINEAR:
+            default:
+                return (pickNumber - 1) % numPlayers;
+        }
+    }
+
+    /**
+     * Load draft with all collections eagerly from DB.
+     */
+    private Draft loadFull(Integer draftId) {
+        return draftRepository.findById(draftId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                        "Draft not found: " + draftId));
+    }
+
+    private List<CastawayPerformance> findAvailableCastawaysForDraft(Draft draft) {
+        List<CastawayPerformance> seasonCastaways = castawayPerformanceRepository
+                .findBySeasonId(draft.getSeason().getSeason());
+
+        Integer latestEpisodeWatched = draft.getGroup().getLatestEpisodeWatched();
+        if (latestEpisodeWatched == null || latestEpisodeWatched <= 0) {
+            return seasonCastaways;
+        }
+
+        Set<Integer> bootedCastawayPerformanceIds = new HashSet<>(
+                bootRepository.findBySeasonIdAndEpisodeNumberLessThanEqual(
+                                draft.getSeason().getSeason(),
+                                latestEpisodeWatched)
+                        .stream()
+                        .map(boot -> boot.getCastaway().getId())
+                        .toList()
+        );
+
+        return seasonCastaways.stream()
+                .filter(cp -> !bootedCastawayPerformanceIds.contains(cp.getId()))
+                .collect(Collectors.toList());
+    }
+
+    private boolean isBootedInWatchedEpisodes(Draft draft, Integer castawayPerformanceId) {
+        Integer latestEpisodeWatched = draft.getGroup().getLatestEpisodeWatched();
+        if (latestEpisodeWatched == null || latestEpisodeWatched <= 0) {
+            return false;
+        }
+        return bootRepository.existsBySeasonIdAndEpisodeNumberLessThanEqualAndCastawayPerformanceId(
+                draft.getSeason().getSeason(),
+                latestEpisodeWatched,
+                castawayPerformanceId
+        );
     }
 }

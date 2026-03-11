@@ -1,126 +1,123 @@
 package com.vivida.draft;
 
 import com.vivida.auth.User;
-import com.vivida.game.castaway.CastawayPerformanceDTO;
-import com.vivida.social.group.GroupDTO;
-import com.vivida.social.group.GroupRepository;
+import org.springframework.http.HttpStatus;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
-import java.util.stream.Collectors;
 
 @RestController
-@RequestMapping("api/v1/draft")
+@RequestMapping("api/v1/drafts")
 public class DraftController {
 
     private final DraftService draftService;
-    private final GroupRepository groupRepository;
 
-    public DraftController(DraftService draftService, GroupRepository groupRepository) {
+    public DraftController(DraftService draftService) {
         this.draftService = draftService;
-        this.groupRepository = groupRepository;
     }
 
-    /**
-     * Start the draft for a group
-     * POST /api/v1/draft/{groupId}/start
-     */
-    @PostMapping("{groupId}/start")
-    public DraftStateDTO startDraft(@PathVariable Integer groupId) {
-        return draftService.startDraft(groupId);
-    }
+    // ── Create ─────────────────────────────────────────────────────────────────
 
     /**
-     * Get current draft state
-     * GET /api/v1/draft/{groupId}/state
+     * POST /api/v1/drafts
+     * Create a new draft (PENDING) for a group.
+     * Body: { groupId, style, teamSize, scheduledAt? }
      */
-    @GetMapping("{groupId}/state")
-    public DraftStateDTO getDraftState(@PathVariable Integer groupId) {
-        return draftService.getDraftState(groupId);
-    }
-
-    /**
-     * Make a draft pick
-     * POST /api/v1/draft/{groupId}/pick
-     * Body: { "castawayPerformanceId": 123 }
-     */
-    @PostMapping("{groupId}/pick")
-    public DraftStateDTO makePick(
-            @PathVariable Integer groupId,
-            @RequestBody DraftPickRequest request,
-            Authentication authentication) {
+    @PostMapping
+    @ResponseStatus(HttpStatus.CREATED)
+    public DraftDTO createDraft(@RequestBody CreateDraftRequest request,
+                                Authentication authentication) {
         User user = (User) authentication.getPrincipal();
-        return draftService.makePick(groupId, user.getId(), request.castawayPerformanceId);
+        return draftService.createDraft(request, user);
+    }
+
+    // ── Read ───────────────────────────────────────────────────────────────────
+
+    /**
+     * GET /api/v1/drafts/{draftId}
+     * Get complete draft state by draft ID.
+     */
+    @GetMapping("{draftId}")
+    public DraftDTO getDraft(@PathVariable Integer draftId) {
+        return draftService.getDraft(draftId);
     }
 
     /**
-     * Get list of undrafted castaways
-     * GET /api/v1/draft/{groupId}/undrafted
+     * GET /api/v1/drafts/group/{groupId}
+     * Get the current draft for a group (active > pending > latest).
+     * This is the primary endpoint the frontend will poll.
      */
-    @GetMapping("{groupId}/undrafted")
-    public List<CastawayPerformanceDTO> getUndraftedCastaways(@PathVariable Integer groupId) {
-        return draftService.getUndraftedCastaways(groupId).stream()
-                .map(CastawayPerformanceDTO::new)
-                .collect(Collectors.toList());
+    @GetMapping("group/{groupId}")
+    public DraftDTO getDraftForGroup(@PathVariable Integer groupId) {
+        return draftService.getDraftForGroup(groupId);
+    }
+
+    // ── Lifecycle ──────────────────────────────────────────────────────────────
+
+    /**
+     * POST /api/v1/drafts/{draftId}/start
+     * Transition PENDING → DRAFTING. Creates participants, castaways snapshot,
+     * and all pick slots up-front.
+     */
+    @PostMapping("{draftId}/start")
+    public DraftDTO startDraft(@PathVariable Integer draftId) {
+        return draftService.startDraft(draftId);
     }
 
     /**
-     * Check if it's the requesting user's turn
-     * GET /api/v1/draft/{groupId}/my-turn
+     * POST /api/v1/drafts/{draftId}/pick
+     * Fill in the current pick slot with a castaway.
+     * Body: { castawayPerformanceId }
      */
-    @GetMapping("{groupId}/my-turn")
-    public Map<String, Object> isMyTurn(
-            @PathVariable Integer groupId,
-            Authentication authentication) {
+    @PostMapping("{draftId}/pick")
+    public DraftDTO makePick(@PathVariable Integer draftId,
+                             @RequestBody PickRequest request,
+                             Authentication authentication) {
         User user = (User) authentication.getPrincipal();
-        boolean isMyTurn = draftService.isUserTurn(groupId, user.getId());
-        
-        Map<String, Object> response = new HashMap<>();
-        response.put("isMyTurn", isMyTurn);
-        
-        if (isMyTurn) {
-            DraftStateDTO state = draftService.getDraftState(groupId);
-            response.put("pickNumber", state.currentPickNumber);
-        }
-        
-        return response;
+        return draftService.makePick(draftId, user.getId(), request.castawayPerformanceId);
     }
 
     /**
-     * Manually complete the draft (admin only)
-     * POST /api/v1/draft/{groupId}/complete
+     * POST /api/v1/drafts/{draftId}/complete
+     * Manually mark the draft as complete (admin safety valve).
      */
-    @PostMapping("{groupId}/complete")
-    public GroupDTO completeDraft(@PathVariable Integer groupId) {
-        draftService.completeDraft(groupId);
-        // Return updated group
-        DraftStateDTO state = draftService.getDraftState(groupId);
-        return state.group;
+    @PostMapping("{draftId}/complete")
+    public DraftDTO completeDraft(@PathVariable Integer draftId) {
+        return draftService.completeDraftById(draftId);
     }
 
     /**
-     * Reset the draft - removes all picks and returns to PENDING status (admin only)
-     * POST /api/v1/draft/{groupId}/reset
+     * POST /api/v1/drafts/{draftId}/reset
+     * Clear all picks and return to PENDING for reconfiguration.
      */
-    @PostMapping("{groupId}/reset")
-    public GroupDTO resetDraft(@PathVariable Integer groupId) {
-        draftService.resetDraft(groupId);
-        // Return updated group by fetching it from the repository
-        var groupEntity = groupRepository.findById(groupId).orElse(null);
-        if (groupEntity != null) {
-            return GroupDTO.fromEntity(groupEntity);
-        }
-        // If group not found, return empty DTO
-        return new GroupDTO();
+    @PostMapping("{draftId}/reset")
+    public DraftDTO resetDraft(@PathVariable Integer draftId) {
+        return draftService.resetDraft(draftId);
     }
 
+    // ── Helper ─────────────────────────────────────────────────────────────────
+
     /**
-     * Request body for making a draft pick
+     * GET /api/v1/drafts/{draftId}/my-turn
+     * Quick check — is it the requesting user's turn?
      */
-    public static class DraftPickRequest {
+    @GetMapping("{draftId}/my-turn")
+    public Map<String, Object> isMyTurn(@PathVariable Integer draftId,
+                                        Authentication authentication) {
+        User user = (User) authentication.getPrincipal();
+        DraftDTO draft = draftService.getDraft(draftId);
+        boolean isMyTurn = draft.currentTurnUser != null
+                && draft.currentTurnUser.id.equals(user.getId());
+        return Map.of(
+                "isMyTurn", isMyTurn,
+                "currentPickNumber", draft.currentPickNumber != null ? draft.currentPickNumber : 0
+        );
+    }
+
+    // ── Request bodies ─────────────────────────────────────────────────────────
+
+    public static class PickRequest {
         public Integer castawayPerformanceId;
     }
 }
