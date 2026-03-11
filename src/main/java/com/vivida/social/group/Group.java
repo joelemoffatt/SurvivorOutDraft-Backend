@@ -10,6 +10,7 @@ import java.time.LocalDateTime;
 import java.util.List;
 
 import com.vivida.auth.User;
+import com.vivida.draft.Draft;
 import com.vivida.game.season.Season;
 import com.vivida.scoring.PointRule;
 import com.vivida.social.team.Team;
@@ -37,11 +38,9 @@ public class Group {
     @JoinColumn(name = "season_id", nullable = false)
     private Season season;
 
-    private LocalDateTime draftDate;
-
-    private LocalDateTime draftStartTime;
-
-    private LocalDateTime draftEndTime;
+    @ManyToOne
+    @JoinColumn(name = "draft_id")
+    private Draft draft;
 
     private Integer teamSize;
 
@@ -51,9 +50,6 @@ public class Group {
      */
     @Column(nullable = false)
     private Integer latestEpisodeWatched;
-
-    @Column(columnDefinition = "TEXT")
-    private String draftOrder;  // JSON array of user IDs in randomized draft order
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)

@@ -11,6 +11,8 @@ import com.vivida.social.group.GroupRepository;
 import com.vivida.social.group.GroupStatus;
 import com.vivida.social.group.MembershipStatus;
 import com.vivida.social.team.Team;
+import com.vivida.social.team.TeamCastaway;
+import com.vivida.social.team.TeamCastawayRepository;
 import com.vivida.social.team.TeamRepository;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -33,26 +35,32 @@ public class DraftService {
     private final DraftRepository draftRepository;
     private final DraftParticipantRepository participantRepository;
     private final DraftPickRepository pickRepository;
+    private final DraftCastawayRepository draftCastawayRepository;
     private final GroupRepository groupRepository;
     private final GroupMemberRepository groupMemberRepository;
     private final TeamRepository teamRepository;
+    private final TeamCastawayRepository teamCastawayRepository;
     private final CastawayPerformanceRepository castawayPerformanceRepository;
     private final BootRepository bootRepository;
 
     public DraftService(DraftRepository draftRepository,
                         DraftParticipantRepository participantRepository,
                         DraftPickRepository pickRepository,
+                        DraftCastawayRepository draftCastawayRepository,
                         GroupRepository groupRepository,
                         GroupMemberRepository groupMemberRepository,
                         TeamRepository teamRepository,
+                        TeamCastawayRepository teamCastawayRepository,
                         CastawayPerformanceRepository castawayPerformanceRepository,
                         BootRepository bootRepository) {
         this.draftRepository = draftRepository;
         this.participantRepository = participantRepository;
         this.pickRepository = pickRepository;
+        this.draftCastawayRepository = draftCastawayRepository;
         this.groupRepository = groupRepository;
         this.groupMemberRepository = groupMemberRepository;
         this.teamRepository = teamRepository;
+        this.teamCastawayRepository = teamCastawayRepository;
         this.castawayPerformanceRepository = castawayPerformanceRepository;
         this.bootRepository = bootRepository;
     }
@@ -95,7 +103,7 @@ public class DraftService {
         draft.setCurrentPickNumber(1);
 
         draftRepository.save(draft);
-        return DraftDTO.from(loadFull(draft.getId()));
+        return buildDraftDTO(loadFull(draft.getId()));
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
@@ -147,7 +155,8 @@ public class DraftService {
             participants.add(dp);
         }
         participantRepository.saveAll(participants);
-        draft.setParticipants(participants);
+        draft.getParticipants().clear();
+        draft.getParticipants().addAll(participants);
 
         // ── 2. Count the castaway pool (no snapshot rows needed) ─────────────
         List<CastawayPerformance> allCastaways = findAvailableCastawaysForDraft(draft);
@@ -155,6 +164,18 @@ public class DraftService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "No available castaways remain after applying watched-episode boots");
         }
+
+        List<DraftCastaway> draftCastaways = allCastaways.stream()
+            .map(castawayPerformance -> {
+                DraftCastaway draftCastaway = new DraftCastaway();
+                draftCastaway.setDraft(draft);
+                draftCastaway.setCastawayPerformance(castawayPerformance);
+                return draftCastaway;
+            })
+            .collect(Collectors.toList());
+        draftCastawayRepository.saveAll(draftCastaways);
+        draft.getDraftCastaways().clear();
+        draft.getDraftCastaways().addAll(draftCastaways);
 
         // ── 3. Pre-create all pick slots ─────────────────────────────────────
         int totalParticipants = participants.size();
@@ -176,7 +197,8 @@ public class DraftService {
             picks.add(pick);
         }
         pickRepository.saveAll(picks);
-        draft.setPicks(picks);
+        draft.getPicks().clear();
+        draft.getPicks().addAll(picks);
 
         // ── 4. Finalise header ───────────────────────────────────────────────
         draft.setStatus(DraftStatus.DRAFTING);
@@ -192,11 +214,16 @@ public class DraftService {
         // Todo: Consider removing unnecessary coupling between Group and Draft statuses — can a Group be in DRAFTING status without an active Draft?
         Group group = draft.getGroup();
         group.setStatus(GroupStatus.DRAFTING);
-        group.setDraftStartTime(LocalDateTime.now());
+        group.setDraft(draft);
         groupRepository.save(group);
 
         draftRepository.save(draft);
-        return DraftDTO.from(loadFull(draftId));
+        return buildDraftDTO(loadFull(draftId));
+    }
+
+    public DraftDTO startDraftForGroup(Integer groupId) {
+        Draft draft = findDraftForGroup(groupId);
+        return startDraft(draft.getId());
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
@@ -222,16 +249,12 @@ public class DraftService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "It is not your turn");
         }
 
-        // Validate the castaway exists in this season
-        CastawayPerformance castawayPerformance = castawayPerformanceRepository
-            .findByIdAndSeasonId(castawayPerformanceId, draft.getSeason().getSeason())
+        // Validate the castaway exists in this draft's persisted castaway pool
+        CastawayPerformance castawayPerformance = draftCastawayRepository
+            .findByDraftIdAndCastawayPerformanceId(draftId, castawayPerformanceId)
+            .map(DraftCastaway::getCastawayPerformance)
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                "Castaway is not part of this draft's season"));
-
-        if (isBootedInWatchedEpisodes(draft, castawayPerformanceId)) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "This castaway was booted in an episode your group has watched");
-        }
+                "Castaway is not available in this draft pool"));
 
         // Guard: same team cannot draft the same castaway twice
         DraftParticipant currentParticipant = participantRepository
@@ -291,7 +314,7 @@ public class DraftService {
         }
 
         draftRepository.save(draft);
-        return DraftDTO.from(loadFull(draftId));
+        return buildDraftDTO(loadFull(draftId));
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
@@ -302,29 +325,37 @@ public class DraftService {
         Draft draft = loadFull(draftId);
         completeDraft(draft);
         draftRepository.save(draft);
-        return DraftDTO.from(loadFull(draftId));
+        return buildDraftDTO(loadFull(draftId));
+    }
+
+    public DraftDTO completeDraftByGroup(Integer groupId) {
+        Draft draft = findDraftForGroup(groupId);
+        return completeDraftById(draft.getId());
     }
 
     private void completeDraft(Draft draft) {
+        syncDraftResultsToTeamRosters(draft);
+
         draft.setStatus(DraftStatus.COMPLETED);
         draft.setCompletedAt(LocalDateTime.now());
         draft.setCurrentTurnUser(null);
 
         Group group = draft.getGroup();
         group.setStatus(GroupStatus.ACTIVE);
-        group.setDraftEndTime(LocalDateTime.now());
+        group.setDraft(draft);
         groupRepository.save(group);
     }
 
     /** Clear all picks and castaways, return to PENDING for reconfiguration. */
     public DraftDTO resetDraft(Integer draftId) {
         Draft draft = loadFull(draftId);
+        Group group = draft.getGroup();
 
-        pickRepository.deleteAll(draft.getPicks());
-        participantRepository.deleteAll(draft.getParticipants());
+        teamCastawayRepository.deleteByTeamGroupId(group.getId());
 
         draft.getPicks().clear();
         draft.getParticipants().clear();
+        draft.getDraftCastaways().clear();
 
         draft.setStatus(DraftStatus.PENDING);
         draft.setStartedAt(null);
@@ -336,14 +367,17 @@ public class DraftService {
         draft.setTotalCastaways(0);
         draft.setTotalPicks(0);
 
-        Group group = draft.getGroup();
         group.setStatus(GroupStatus.PENDING);
-        group.setDraftStartTime(null);
-        group.setDraftEndTime(null);
-        groupRepository.save(group);
+        group.setDraft(draft);
 
-        draftRepository.save(draft);
-        return DraftDTO.from(loadFull(draftId));
+        draftRepository.saveAndFlush(draft);
+        groupRepository.save(group);
+        return buildDraftDTO(loadFull(draftId));
+    }
+
+    public DraftDTO resetDraftByGroup(Integer groupId) {
+        Draft draft = findDraftForGroup(groupId);
+        return resetDraft(draft.getId());
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
@@ -351,7 +385,7 @@ public class DraftService {
     // ═══════════════════════════════════════════════════════════════════════════
 
     public DraftDTO getDraft(Integer draftId) {
-        return DraftDTO.from(loadFull(draftId));
+        return buildDraftDTO(loadFull(draftId));
     }
 
     /**
@@ -361,15 +395,20 @@ public class DraftService {
     public DraftDTO getDraftForGroup(Integer groupId) {
         // Prefer active one first
         Optional<Draft> active = draftRepository.findByGroupIdAndStatus(groupId, DraftStatus.DRAFTING);
-        if (active.isPresent()) return DraftDTO.from(loadFull(active.get().getId()));
+        if (active.isPresent()) return buildDraftDTO(loadFull(active.get().getId()));
 
         Optional<Draft> pending = draftRepository.findByGroupIdAndStatus(groupId, DraftStatus.PENDING);
-        if (pending.isPresent()) return DraftDTO.from(loadFull(pending.get().getId()));
+        if (pending.isPresent()) return buildDraftDTO(loadFull(pending.get().getId()));
 
         Draft latest = draftRepository.findFirstByGroupIdOrderByCreatedAtDesc(groupId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                         "No draft found for group " + groupId));
-        return DraftDTO.from(loadFull(latest.getId()));
+        return buildDraftDTO(loadFull(latest.getId()));
+    }
+
+    public DraftDTO makePickForGroup(Integer groupId, Integer userId, Integer castawayPerformanceId) {
+        Draft draft = findDraftForGroup(groupId);
+        return makePick(draft.getId(), userId, castawayPerformanceId);
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
@@ -405,6 +444,18 @@ public class DraftService {
                         "Draft not found: " + draftId));
     }
 
+        private Draft findDraftForGroup(Integer groupId) {
+        Optional<Draft> active = draftRepository.findByGroupIdAndStatus(groupId, DraftStatus.DRAFTING);
+        if (active.isPresent()) return active.get();
+
+        Optional<Draft> pending = draftRepository.findByGroupIdAndStatus(groupId, DraftStatus.PENDING);
+        if (pending.isPresent()) return pending.get();
+
+        return draftRepository.findFirstByGroupIdOrderByCreatedAtDesc(groupId)
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                "No draft found for group " + groupId));
+        }
+
     private List<CastawayPerformance> findAvailableCastawaysForDraft(Draft draft) {
         List<CastawayPerformance> seasonCastaways = castawayPerformanceRepository
                 .findBySeasonId(draft.getSeason().getSeason());
@@ -428,15 +479,27 @@ public class DraftService {
                 .collect(Collectors.toList());
     }
 
-    private boolean isBootedInWatchedEpisodes(Draft draft, Integer castawayPerformanceId) {
-        Integer latestEpisodeWatched = draft.getGroup().getLatestEpisodeWatched();
-        if (latestEpisodeWatched == null || latestEpisodeWatched <= 0) {
-            return false;
-        }
-        return bootRepository.existsBySeasonIdAndEpisodeNumberLessThanEqualAndCastawayPerformanceId(
-                draft.getSeason().getSeason(),
-                latestEpisodeWatched,
-                castawayPerformanceId
-        );
+    private DraftDTO buildDraftDTO(Draft draft) {
+        return DraftDTO.from(draft);
+    }
+
+    private void syncDraftResultsToTeamRosters(Draft draft) {
+        Integer groupId = draft.getGroup().getId();
+        teamCastawayRepository.deleteByTeamGroupId(groupId);
+
+        List<TeamCastaway> rosterEntries = draft.getPicks().stream()
+            .filter(pick -> pick.getCastawayPerformance() != null)
+                .map(pick -> {
+                    TeamCastaway teamCastaway = new TeamCastaway();
+                    teamCastaway.setTeam(pick.getTeam());
+                    teamCastaway.setCastawayPerformance(pick.getCastawayPerformance());
+                    teamCastaway.setDraftOrder(pick.getPickNumber());
+                    teamCastaway.setPoints(0);
+                    teamCastaway.setDraftedAt(pick.getPickedAt() != null ? pick.getPickedAt() : LocalDateTime.now());
+                    return teamCastaway;
+                })
+                .toList();
+
+        teamCastawayRepository.saveAll(rosterEntries);
     }
 }

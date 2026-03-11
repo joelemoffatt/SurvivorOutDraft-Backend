@@ -1,6 +1,5 @@
 package com.vivida.draft;
 
-import com.vivida.game.castaway.Castaway;
 import com.vivida.game.castaway.CastawayPerformance;
 import com.vivida.social.group.Group;
 import com.vivida.social.team.Team;
@@ -49,6 +48,7 @@ public class DraftDTO {
     public Integer currentPickNumber;
     public UserSummary currentTurnUser;
     public List<PickSlotDTO> picks;
+    public List<DraftCastawayDTO> draftCastaways;
 
     // ═══════════════════════════════════════════════════════════════════════════
     // Nested DTOs
@@ -84,19 +84,18 @@ public class DraftDTO {
         }
     }
 
-    public static class CastawayBasicDTO {
-        public Integer id;
-        public String name;
-        public String fullName;
-        public String dateOfBirth;
-        public String city;
+    /** Castaway performance that belongs to this draft pool. */
+    public static class DraftCastawayDTO {
+        public Integer draftId;
+        public Integer castawayPerformanceId;
+        public String castawayName;
 
-        public CastawayBasicDTO(Castaway c) {
-            this.id = c.getId();
-            this.name = c.getName();
-            this.fullName = c.getFull_name();
-            this.dateOfBirth = c.getDate_of_birth();
-            this.city = c.getCity();
+        // We could include more castaway details here if needed, but for now just the name is enough.
+
+        public DraftCastawayDTO(Integer draftId, CastawayPerformance cp) {
+            this.draftId = draftId;
+            this.castawayPerformanceId = cp.getId();
+            this.castawayName = cp.getCastaway().getName();
         }
     }
 
@@ -138,7 +137,7 @@ public class DraftDTO {
 
         // Filled once picked:
         public Integer castawayPerformanceId;
-        public CastawayBasicDTO castaway;
+        public String castawayName;
         public LocalDateTime pickedAt;
 
         public PickSlotDTO(DraftPick dp) {
@@ -153,7 +152,7 @@ public class DraftDTO {
             if (dp.getCastawayPerformance() != null) {
                 CastawayPerformance cp = dp.getCastawayPerformance();
                 this.castawayPerformanceId = cp.getId();
-                this.castaway = new CastawayBasicDTO(cp.getCastaway());
+                this.castawayName = cp.getCastaway().getName();
             }
         }
     }
@@ -193,6 +192,9 @@ public class DraftDTO {
         dto.picks = draft.getPicks().stream()
                 .map(PickSlotDTO::new)
                 .collect(Collectors.toList());
+        dto.draftCastaways = draft.getDraftCastaways().stream()
+            .map(draftCastaway -> new DraftCastawayDTO(draft.getId(), draftCastaway.getCastawayPerformance()))
+            .collect(Collectors.toList());
         dto.isComplete = draft.getStatus() == DraftStatus.COMPLETED;
         return dto;
     }

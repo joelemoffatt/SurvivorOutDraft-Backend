@@ -14,7 +14,6 @@ public class CreateGroupRequest {
     private AdminRef admin;
     private SeasonRef season;
     private Integer teamSize;
-    private String draftDate;
 
     @Getter
     @Setter

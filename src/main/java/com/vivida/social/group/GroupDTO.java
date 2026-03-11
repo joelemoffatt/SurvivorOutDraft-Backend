@@ -1,5 +1,7 @@
 package com.vivida.social.group;
 
+import com.vivida.draft.Draft;
+import com.vivida.draft.DraftStatus;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -16,12 +18,9 @@ public class GroupDTO {
     private String name;
     private AdminDTO admin;
     private SeasonDTO season;
-    private LocalDateTime draftDate;
-    private LocalDateTime draftStartTime;
-    private LocalDateTime draftEndTime;
+    private DraftRefDTO draft;
     private Integer teamSize;
     private Integer latestEpisodeWatched;
-    private String draftOrder;
     private GroupStatus status;
     private LocalDateTime createdAt;
 
@@ -44,18 +43,37 @@ public class GroupDTO {
         private String version;
     }
 
+    @Getter
+    @Setter
+    @AllArgsConstructor
+    @NoArgsConstructor
+    public static class DraftRefDTO {
+        private Integer id;
+        private DraftStatus status;
+        private LocalDateTime scheduledAt;
+        private LocalDateTime startedAt;
+        private LocalDateTime completedAt;
+    }
+
     public static GroupDTO fromEntity(Group group) {
         GroupDTO dto = new GroupDTO();
         dto.setId(group.getId());
         dto.setName(group.getName());
-        dto.setDraftDate(group.getDraftDate());
-        dto.setDraftStartTime(group.getDraftStartTime());
-        dto.setDraftEndTime(group.getDraftEndTime());
         dto.setTeamSize(group.getTeamSize());
         dto.setLatestEpisodeWatched(group.getLatestEpisodeWatched());
-        dto.setDraftOrder(group.getDraftOrder());
         dto.setStatus(group.getStatus());
         dto.setCreatedAt(group.getCreatedAt());
+
+        Draft draft = group.getDraft();
+        if (draft != null) {
+            DraftRefDTO draftDTO = new DraftRefDTO();
+            draftDTO.setId(draft.getId());
+            draftDTO.setStatus(draft.getStatus());
+            draftDTO.setScheduledAt(draft.getScheduledAt());
+            draftDTO.setStartedAt(draft.getStartedAt());
+            draftDTO.setCompletedAt(draft.getCompletedAt());
+            dto.setDraft(draftDTO);
+        }
 
         if (group.getAdmin() != null) {
             AdminDTO adminDTO = new AdminDTO();

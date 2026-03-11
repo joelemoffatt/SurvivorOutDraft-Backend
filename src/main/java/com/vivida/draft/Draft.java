@@ -96,6 +96,10 @@ public class Draft {
     @OrderBy("pickNumber ASC")
     private List<DraftPick> picks = new ArrayList<>();
 
+    @OneToMany(mappedBy = "draft", cascade = CascadeType.ALL, orphanRemoval = true)
+    @OrderBy("id ASC")
+    private List<DraftCastaway> draftCastaways = new ArrayList<>();
+
     @PrePersist
     protected void onCreate() {
         LocalDateTime now = LocalDateTime.now();

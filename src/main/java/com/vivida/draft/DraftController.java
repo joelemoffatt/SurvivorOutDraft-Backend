@@ -65,6 +65,11 @@ public class DraftController {
         return draftService.startDraft(draftId);
     }
 
+    @PostMapping("group/{groupId}/start")
+    public DraftDTO startDraftForGroup(@PathVariable Integer groupId) {
+        return draftService.startDraftForGroup(groupId);
+    }
+
     /**
      * POST /api/v1/drafts/{draftId}/pick
      * Fill in the current pick slot with a castaway.
@@ -87,6 +92,11 @@ public class DraftController {
         return draftService.completeDraftById(draftId);
     }
 
+    @PostMapping("group/{groupId}/complete")
+    public DraftDTO completeDraftForGroup(@PathVariable Integer groupId) {
+        return draftService.completeDraftByGroup(groupId);
+    }
+
     /**
      * POST /api/v1/drafts/{draftId}/reset
      * Clear all picks and return to PENDING for reconfiguration.
@@ -94,6 +104,11 @@ public class DraftController {
     @PostMapping("{draftId}/reset")
     public DraftDTO resetDraft(@PathVariable Integer draftId) {
         return draftService.resetDraft(draftId);
+    }
+
+    @PostMapping("group/{groupId}/reset")
+    public DraftDTO resetDraftForGroup(@PathVariable Integer groupId) {
+        return draftService.resetDraftByGroup(groupId);
     }
 
     // ── Helper ─────────────────────────────────────────────────────────────────

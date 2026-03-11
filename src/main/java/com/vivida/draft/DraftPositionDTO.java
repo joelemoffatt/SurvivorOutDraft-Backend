@@ -9,12 +9,21 @@ import com.vivida.auth.User;
 public class DraftPositionDTO {
     public Integer position;        // 0, 1, 2, 3 (their position in draft order)
     public UserDTO user;
+    public Integer teamId;
+    public String teamName;
     public Integer pickCount;       // How many picks they've made
     public Integer nextPickNumber;  // When they pick next (null if not calculable)
 
-    public DraftPositionDTO(Integer position, User user, Integer pickCount, Integer nextPickNumber) {
+    public DraftPositionDTO(Integer position,
+                            User user,
+                            Integer teamId,
+                            String teamName,
+                            Integer pickCount,
+                            Integer nextPickNumber) {
         this.position = position;
         this.user = new UserDTO(user);
+        this.teamId = teamId;
+        this.teamName = teamName;
         this.pickCount = pickCount;
         this.nextPickNumber = nextPickNumber;
     }
