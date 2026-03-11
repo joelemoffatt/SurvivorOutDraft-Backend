@@ -84,25 +84,24 @@ public class GroupService {
     }
 
     @Transactional
-    public Group updateLatestEpisodeWatched(Integer groupId, Integer latestEpisodeWatched) {
-        if (latestEpisodeWatched == null || latestEpisodeWatched < 0) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "latestEpisodeWatched must be 0 or greater");
+    public Group updateLatestEpisodeWatched(Integer groupId, Integer episodeId) {
+        if (episodeId == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "episodeId is required");
         }
 
         Group group = getGroupById(groupId);
-        int maxEpisodeForSeason = episodeRepository.findBySeasonId(group.getSeason().getSeason()).stream()
-                .mapToInt(e -> e.getEpisodeNumber() != null ? e.getEpisodeNumber() : 0)
-                .max()
-                .orElse(0);
 
-        if (latestEpisodeWatched > maxEpisodeForSeason) {
+        com.vivida.game.episode.Episode episode = episodeRepository.findById(episodeId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                        "Episode not found with id " + episodeId));
+
+        if (episode.getSeason() == null
+                || !episode.getSeason().getSeason().equals(group.getSeason().getSeason())) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "latestEpisodeWatched cannot be greater than the latest episode in this season (" +
-                            maxEpisodeForSeason + ")");
+                    "Episode must belong to the group's season");
         }
 
-        group.setLatestEpisodeWatched(latestEpisodeWatched);
+        group.setLatestEpisodeWatched(episode);
         return groupRepository.save(group);
     }
 

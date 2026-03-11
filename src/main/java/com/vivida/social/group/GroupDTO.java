@@ -20,7 +20,7 @@ public class GroupDTO {
     private SeasonDTO season;
     private DraftRefDTO draft;
     private Integer teamSize;
-    private Integer latestEpisodeWatched;
+    private EpisodeDTO latestEpisodeWatched;
     private GroupStatus status;
     private LocalDateTime createdAt;
 
@@ -47,6 +47,16 @@ public class GroupDTO {
     @Setter
     @AllArgsConstructor
     @NoArgsConstructor
+    public static class EpisodeDTO {
+        private Integer id;
+        private Integer episodeNumber;
+        private String episodeTitle;
+    }
+
+    @Getter
+    @Setter
+    @AllArgsConstructor
+    @NoArgsConstructor
     public static class DraftRefDTO {
         private Integer id;
         private DraftStatus status;
@@ -60,7 +70,13 @@ public class GroupDTO {
         dto.setId(group.getId());
         dto.setName(group.getName());
         dto.setTeamSize(group.getTeamSize());
-        dto.setLatestEpisodeWatched(group.getLatestEpisodeWatched());
+        if (group.getLatestEpisodeWatched() != null) {
+            EpisodeDTO epDTO = new EpisodeDTO();
+            epDTO.setId(group.getLatestEpisodeWatched().getId());
+            epDTO.setEpisodeNumber(group.getLatestEpisodeWatched().getEpisodeNumber());
+            epDTO.setEpisodeTitle(group.getLatestEpisodeWatched().getEpisodeTitle());
+            dto.setLatestEpisodeWatched(epDTO);
+        }
         dto.setStatus(group.getStatus());
         dto.setCreatedAt(group.getCreatedAt());
 

@@ -45,13 +45,17 @@ public class DraftController {
      * and all pick slots up-front.
      */
     @PostMapping("{draftId}/start")
-    public DraftDTO startDraft(@PathVariable Integer draftId) {
-        return draftService.startDraft(draftId);
+    public DraftDTO startDraft(@PathVariable Integer draftId,
+                               Authentication authentication) {
+        User user = (User) authentication.getPrincipal();
+        return draftService.startDraft(draftId, user.getId());
     }
 
     @PostMapping("group/{groupId}/start")
-    public DraftDTO startDraftForGroup(@PathVariable Integer groupId) {
-        return draftService.startDraftForGroup(groupId);
+    public DraftDTO startDraftForGroup(@PathVariable Integer groupId,
+                                       Authentication authentication) {
+        User user = (User) authentication.getPrincipal();
+        return draftService.startDraftForGroup(groupId, user.getId());
     }
 
     /**
@@ -72,13 +76,17 @@ public class DraftController {
      * Manually mark the draft as complete (admin safety valve).
      */
     @PostMapping("{draftId}/complete")
-    public DraftDTO completeDraft(@PathVariable Integer draftId) {
-        return draftService.completeDraftById(draftId);
+    public DraftDTO completeDraft(@PathVariable Integer draftId,
+                                  Authentication authentication) {
+        User user = (User) authentication.getPrincipal();
+        return draftService.completeDraftById(draftId, user.getId());
     }
 
     @PostMapping("group/{groupId}/complete")
-    public DraftDTO completeDraftForGroup(@PathVariable Integer groupId) {
-        return draftService.completeDraftByGroup(groupId);
+    public DraftDTO completeDraftForGroup(@PathVariable Integer groupId,
+                                          Authentication authentication) {
+        User user = (User) authentication.getPrincipal();
+        return draftService.completeDraftByGroup(groupId, user.getId());
     }
 
     /**
@@ -86,13 +94,17 @@ public class DraftController {
      * Clear all picks and return to PENDING for reconfiguration.
      */
     @PostMapping("{draftId}/reset")
-    public DraftDTO resetDraft(@PathVariable Integer draftId) {
-        return draftService.resetDraft(draftId);
+    public DraftDTO resetDraft(@PathVariable Integer draftId,
+                               Authentication authentication) {
+        User user = (User) authentication.getPrincipal();
+        return draftService.resetDraft(draftId, user.getId());
     }
 
     @PostMapping("group/{groupId}/reset")
-    public DraftDTO resetDraftForGroup(@PathVariable Integer groupId) {
-        return draftService.resetDraftByGroup(groupId);
+    public DraftDTO resetDraftForGroup(@PathVariable Integer groupId,
+                                       Authentication authentication) {
+        User user = (User) authentication.getPrincipal();
+        return draftService.resetDraftByGroup(groupId, user.getId());
     }
 
     // ── Helper ─────────────────────────────────────────────────────────────────

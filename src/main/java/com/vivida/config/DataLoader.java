@@ -1033,7 +1033,7 @@ public class DataLoader implements CommandLineRunner {
         group.setSeason(season);
         group.setStatus(GroupStatus.PENDING);
         group.setTeamSize(4);
-        group.setLatestEpisodeWatched(2);
+        group.setLatestEpisodeWatched(episodeCache.get(50002));
         groupRepository.save(group);
 
         Map<Integer, Team> teamByUserId = new HashMap<>();
@@ -1107,7 +1107,6 @@ public class DataLoader implements CommandLineRunner {
         group.setSeason(season);
         group.setStatus(GroupStatus.ACTIVE);
         group.setTeamSize(4);  // 4 castaways per team for hardcoded rosters
-        group.setLatestEpisodeWatched(0);
         groupRepository.save(group);
 
         // Add users to group
@@ -1203,7 +1202,6 @@ public class DataLoader implements CommandLineRunner {
         group.setSeason(season);
         group.setStatus(GroupStatus.COMPLETED);
         group.setTeamSize(0);
-        group.setLatestEpisodeWatched(0);
         groupRepository.save(group);
 
         // Add users to group

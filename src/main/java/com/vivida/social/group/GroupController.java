@@ -8,6 +8,8 @@ import org.springframework.web.server.ResponseStatusException;
 
 import com.vivida.auth.User;
 import com.vivida.auth.UserRepository;
+import com.vivida.game.episode.Episode;
+import com.vivida.game.episode.EpisodeRepository;
 import com.vivida.game.season.Season;
 import com.vivida.game.season.SeasonRepository;
 
@@ -21,15 +23,18 @@ public class GroupController {
     private final GroupService groupService;
     private final DraftService draftService;
     private final UserRepository userRepository;
+    private final EpisodeRepository episodeRepository;
     private final SeasonRepository seasonRepository;
 
     public GroupController(GroupService groupService,
                            DraftService draftService,
                            UserRepository userRepository,
+                           EpisodeRepository episodeRepository,
                            SeasonRepository seasonRepository) {
         this.groupService = groupService;
         this.draftService = draftService;
         this.userRepository = userRepository;
+        this.episodeRepository = episodeRepository;
         this.seasonRepository = seasonRepository;
     }
 
@@ -81,10 +86,6 @@ public class GroupController {
         if (request.getTeamSize() == null || request.getTeamSize() <= 0) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Team size must be a positive integer");
         }
-        if (request.getLatestEpisodeWatched() == null || request.getLatestEpisodeWatched() < 0) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "Latest episode watched is required and must be 0 or greater");
-        }
 
         // Fetch User (admin) entity
         User admin = userRepository.findById(request.getAdmin().getId())
@@ -98,13 +99,28 @@ public class GroupController {
                         HttpStatus.NOT_FOUND, "Season not found with id " + request.getSeason().getId()
                 ));
 
+        // Resolve optional latest watched episode
+        Episode latestWatchedEpisode = null;
+        if (request.getLatestWatchedEpisode() != null && request.getLatestWatchedEpisode().getId() != null) {
+            latestWatchedEpisode = episodeRepository.findById(request.getLatestWatchedEpisode().getId())
+                .orElseThrow(() -> new ResponseStatusException(
+                    HttpStatus.NOT_FOUND,
+                    "Episode not found with id " + request.getLatestWatchedEpisode().getId()
+                ));
+            if (latestWatchedEpisode.getSeason() == null
+                || !latestWatchedEpisode.getSeason().getSeason().equals(season.getSeason())) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Latest watched episode must belong to the selected season");
+            }
+        }
+
         // Create Group entity
         Group group = new Group();
         group.setName(request.getName().trim());
         group.setAdmin(admin);
         group.setSeason(season);
         group.setTeamSize(request.getTeamSize());
-        group.setLatestEpisodeWatched(request.getLatestEpisodeWatched());
+        group.setLatestEpisodeWatched(latestWatchedEpisode); // null = no episodes watched
         group.setStatus(GroupStatus.PENDING);
 
         // Save group and automatically add admin as member
@@ -130,11 +146,11 @@ public class GroupController {
     @PatchMapping("{id}/watched-episode")
     public GroupDTO updateLatestWatchedEpisode(@PathVariable Integer id,
                                                @RequestBody UpdateWatchedEpisodeRequest request) {
-        if (request == null || request.getLatestEpisodeWatched() == null) {
+        if (request == null || request.getEpisodeId() == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "latestEpisodeWatched is required");
+                    "episodeId is required");
         }
-        Group updated = groupService.updateLatestEpisodeWatched(id, request.getLatestEpisodeWatched());
+        Group updated = groupService.updateLatestEpisodeWatched(id, request.getEpisodeId());
         return GroupDTO.fromEntity(updated);
     }
 

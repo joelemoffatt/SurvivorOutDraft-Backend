@@ -11,6 +11,7 @@ import java.util.List;
 
 import com.vivida.auth.User;
 import com.vivida.draft.Draft;
+import com.vivida.game.episode.Episode;
 import com.vivida.game.season.Season;
 import com.vivida.scoring.PointRule;
 import com.vivida.social.team.Team;
@@ -45,11 +46,12 @@ public class Group {
     private Integer teamSize;
 
     /**
-     * Highest episode number this group has watched for its season.
-     * Used to hide spoilers by removing castaways booted in watched episodes.
+     * The last episode this group has watched for its season.
+     * Used to hide spoilers by removing castaways booted after this episode.
      */
-    @Column(nullable = false)
-    private Integer latestEpisodeWatched;
+    @ManyToOne
+    @JoinColumn(name = "latest_episode_watched_id")
+    private Episode latestEpisodeWatched;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
@@ -72,9 +74,6 @@ public class Group {
         createdAt = LocalDateTime.now();
         if (status == null) {
             status = GroupStatus.PENDING;
-        }
-        if (latestEpisodeWatched == null) {
-            latestEpisodeWatched = 0;
         }
     }
 }

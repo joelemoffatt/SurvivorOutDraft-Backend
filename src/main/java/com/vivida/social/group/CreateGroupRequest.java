@@ -17,7 +17,7 @@ public class CreateGroupRequest {
     private AdminRef admin;
     private SeasonRef season;
     private Integer teamSize;
-    private Integer latestEpisodeWatched;
+    private EpisodeRef latestWatchedEpisode;
     private DraftStyle style;
     private LocalDateTime scheduledAt;
 
@@ -34,6 +34,14 @@ public class CreateGroupRequest {
     @AllArgsConstructor
     @NoArgsConstructor
     public static class SeasonRef {
+        private Integer id;
+    }
+
+    @Getter
+    @Setter
+    @AllArgsConstructor
+    @NoArgsConstructor
+    public static class EpisodeRef {
         private Integer id;
     }
 }

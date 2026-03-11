@@ -4,6 +4,7 @@ import com.vivida.auth.User;
 import com.vivida.game.boot.BootRepository;
 import com.vivida.game.castaway.CastawayPerformance;
 import com.vivida.game.castaway.CastawayPerformanceRepository;
+import com.vivida.game.episode.Episode;
 import com.vivida.social.group.Group;
 import com.vivida.social.group.GroupMember;
 import com.vivida.social.group.GroupMemberRepository;
@@ -124,8 +125,9 @@ public class DraftService {
      *  3. Pre-create all DraftPick slots based on style + teamSize
      *  4. Set currentTurnUser to the first picker
      */
-    public DraftDTO startDraft(Integer draftId) {
+    public DraftDTO startDraft(Integer draftId, Integer requestingUserId) {
         Draft draft = loadFull(draftId);
+        assertGroupAdmin(draft.getGroup(), requestingUserId);
 
         if (draft.getStatus() != DraftStatus.PENDING) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
@@ -228,9 +230,9 @@ public class DraftService {
         return buildDraftDTO(loadFull(draftId));
     }
 
-    public DraftDTO startDraftForGroup(Integer groupId) {
+    public DraftDTO startDraftForGroup(Integer groupId, Integer requestingUserId) {
         Draft draft = findDraftForGroup(groupId);
-        return startDraft(draft.getId());
+        return startDraft(draft.getId(), requestingUserId);
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
@@ -328,16 +330,17 @@ public class DraftService {
     // Complete / Reset
     // ═══════════════════════════════════════════════════════════════════════════
 
-    public DraftDTO completeDraftById(Integer draftId) {
+    public DraftDTO completeDraftById(Integer draftId, Integer requestingUserId) {
         Draft draft = loadFull(draftId);
+        assertGroupAdmin(draft.getGroup(), requestingUserId);
         completeDraft(draft);
         draftRepository.save(draft);
         return buildDraftDTO(loadFull(draftId));
     }
 
-    public DraftDTO completeDraftByGroup(Integer groupId) {
+    public DraftDTO completeDraftByGroup(Integer groupId, Integer requestingUserId) {
         Draft draft = findDraftForGroup(groupId);
-        return completeDraftById(draft.getId());
+        return completeDraftById(draft.getId(), requestingUserId);
     }
 
     private void completeDraft(Draft draft) {
@@ -354,8 +357,9 @@ public class DraftService {
     }
 
     /** Clear all picks and castaways, return to PENDING for reconfiguration. */
-    public DraftDTO resetDraft(Integer draftId) {
+    public DraftDTO resetDraft(Integer draftId, Integer requestingUserId) {
         Draft draft = loadFull(draftId);
+        assertGroupAdmin(draft.getGroup(), requestingUserId);
         Group group = draft.getGroup();
 
         teamCastawayRepository.deleteByTeamGroupId(group.getId());
@@ -382,9 +386,9 @@ public class DraftService {
         return buildDraftDTO(loadFull(draftId));
     }
 
-    public DraftDTO resetDraftByGroup(Integer groupId) {
+    public DraftDTO resetDraftByGroup(Integer groupId, Integer requestingUserId) {
         Draft draft = findDraftForGroup(groupId);
-        return resetDraft(draft.getId());
+        return resetDraft(draft.getId(), requestingUserId);
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
@@ -451,6 +455,18 @@ public class DraftService {
                         "Draft not found: " + draftId));
     }
 
+    private void assertGroupAdmin(Group group, Integer requestingUserId) {
+        if (group == null || group.getAdmin() == null || requestingUserId == null) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "Only the group leader can manage this draft");
+        }
+
+        if (!group.getAdmin().getId().equals(requestingUserId)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "Only the group leader can manage this draft");
+        }
+    }
+
         private Draft findDraftForGroup(Integer groupId) {
         Optional<Draft> active = draftRepository.findByGroupIdAndStatus(groupId, DraftStatus.DRAFTING);
         if (active.isPresent()) return active.get();
@@ -467,15 +483,15 @@ public class DraftService {
         List<CastawayPerformance> seasonCastaways = castawayPerformanceRepository
                 .findBySeasonId(draft.getSeason().getSeason());
 
-        Integer latestEpisodeWatched = draft.getGroup().getLatestEpisodeWatched();
-        if (latestEpisodeWatched == null || latestEpisodeWatched <= 0) {
+        Episode latestEpisodeWatched = draft.getGroup().getLatestEpisodeWatched();
+        if (latestEpisodeWatched == null) {
             return seasonCastaways;
         }
 
         Set<Integer> bootedCastawayPerformanceIds = new HashSet<>(
                 bootRepository.findBySeasonIdAndEpisodeNumberLessThanEqual(
                                 draft.getSeason().getSeason(),
-                                latestEpisodeWatched)
+                                latestEpisodeWatched.getEpisodeNumber())
                         .stream()
                         .map(boot -> boot.getCastaway().getId())
                         .toList()

@@ -10,5 +10,5 @@ import lombok.Setter;
 @AllArgsConstructor
 @NoArgsConstructor
 public class UpdateWatchedEpisodeRequest {
-    private Integer latestEpisodeWatched;
+    private Integer episodeId;
 }
