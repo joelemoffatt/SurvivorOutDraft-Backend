@@ -4,6 +4,14 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.vivida.auth.Role;
 import com.vivida.auth.User;
 import com.vivida.auth.UserRepository;
+import com.vivida.draft.Draft;
+import com.vivida.draft.DraftParticipant;
+import com.vivida.draft.DraftParticipantRepository;
+import com.vivida.draft.DraftPick;
+import com.vivida.draft.DraftPickRepository;
+import com.vivida.draft.DraftRepository;
+import com.vivida.draft.DraftStatus;
+import com.vivida.draft.DraftStyle;
 import com.vivida.game.advantage.AdvantageMovement;
 import com.vivida.game.advantage.AdvantageMovementRepository;
 import com.vivida.game.boot.Boot;
@@ -98,6 +106,9 @@ public class DataLoader implements CommandLineRunner {
     @Autowired private GroupMemberRepository groupMemberRepository;
     @Autowired private TeamRepository teamRepository;
     @Autowired private TeamCastawayRepository teamCastawayRepository;
+    @Autowired private DraftRepository draftRepository;
+    @Autowired private DraftParticipantRepository draftParticipantRepository;
+    @Autowired private DraftPickRepository draftPickRepository;
     @Autowired private PointRuleRepository pointRuleRepository;
     @Autowired private PointCalculationService pointCalculationService;
     @Autowired private PasswordEncoder passwordEncoder;
@@ -254,16 +265,23 @@ public class DataLoader implements CommandLineRunner {
         System.out.println("Clearing data based on flags...");
         
         if (loadGroups) {
-            // Clear group/team related data first (due to foreign keys)
+            // Clear group/team related data with a single truncate to avoid
+            // constantly chasing new foreign-key delete ordering.
             System.out.println("  - Clearing groups, teams, rosters...");
-            teamCastawayRepository.deleteAllInBatch();
-            entityManager.flush();
-            teamRepository.deleteAllInBatch();
-            entityManager.flush();
-            pointRuleRepository.deleteAllInBatch();
-            groupMemberRepository.deleteAllInBatch();
-            entityManager.flush();
-            groupRepository.deleteAllInBatch();
+            entityManager.createNativeQuery("""
+                    TRUNCATE TABLE
+                        draft_picks,
+                        draft_participants,
+                        draft_castaways,
+                        drafts,
+                        team_castaways,
+                        teams,
+                        point_rules,
+                        group_members,
+                        groups
+                    RESTART IDENTITY CASCADE
+                    """)
+                    .executeUpdate();
             entityManager.flush();
         }
         
@@ -963,7 +981,7 @@ public class DataLoader implements CommandLineRunner {
         season50Rosters.put("devin", Arrays.asList("Angelina", "Chrissy", "Emily", "Genevieve"));
         
         seedJeffsProbstFanClub(50, "Jeff's Probst Fan Club 50", season50Rosters);
-        seedSeason50DraftingGroup("test", Arrays.asList("mckenna", "joel", "jess", "kc"));
+        seedSeason50PendingGroup("a test", Arrays.asList("mckenna", "joel", "jess", "kc"));
         
         System.out.println("═".repeat(80) + "\n");
         
@@ -978,7 +996,7 @@ public class DataLoader implements CommandLineRunner {
         System.out.println("═".repeat(80) + "\n");
     }
 
-    private void seedSeason50DraftingGroup(String groupName, List<String> usernames) {
+    private void seedSeason50PendingGroup(String groupName, List<String> usernames) {
         if (groupRepository.findByName(groupName).isPresent()) {
             System.out.println("✓ Group already exists: " + groupName + " (skipping)\n");
             return;
@@ -992,7 +1010,7 @@ public class DataLoader implements CommandLineRunner {
 
         System.out.println("Creating: " + groupName);
         System.out.println("  Season: 50");
-        System.out.println("  Status: DRAFTING\n");
+        System.out.println("  Status: PENDING\n");
 
         List<User> users = new ArrayList<>();
         for (String username : usernames) {
@@ -1013,12 +1031,12 @@ public class DataLoader implements CommandLineRunner {
         group.setName(groupName);
         group.setAdmin(users.get(0));
         group.setSeason(season);
-        group.setDraftDate(LocalDateTime.now());
         group.setStatus(GroupStatus.PENDING);
-        group.setDraftStartTime(LocalDateTime.now());
-        group.setTeamSize(9);
+        group.setTeamSize(4);
+        group.setLatestEpisodeWatched(2);
         groupRepository.save(group);
 
+        Map<Integer, Team> teamByUserId = new HashMap<>();
         for (User user : users) {
             GroupMember member = new GroupMember();
             member.setGroup(group);
@@ -1031,6 +1049,7 @@ public class DataLoader implements CommandLineRunner {
             team.setUser(user);
             team.setTeamName("Team " + user.getUsername());
             teamRepository.save(team);
+            teamByUserId.put(user.getId(), team);
         }
 
         List<PointRule> rules = new ArrayList<>();
@@ -1044,7 +1063,9 @@ public class DataLoader implements CommandLineRunner {
         rules.add(buildPointRule(group, RuleType.QUIT, -2, "Quit"));
         pointRuleRepository.saveAll(rules);
 
-        System.out.println("✓ Created: " + groupName + " (Season 50, DRAFTING)\n");
+        createDraftForPendingGroup(group, DraftStyle.SNAKE);
+
+        System.out.println("✓ Created: " + groupName + " (Season 50, PENDING)\n");
     }
 
     private void seedJeffsProbstFanClub(Integer seasonNum, String groupName, Map<String, List<String>> userRosters) {
@@ -1084,10 +1105,9 @@ public class DataLoader implements CommandLineRunner {
         group.setName(groupName);
         group.setAdmin(users.get(0));
         group.setSeason(season);
-        group.setDraftDate(LocalDateTime.now());
         group.setStatus(GroupStatus.ACTIVE);
-        group.setDraftStartTime(LocalDateTime.now().plusMinutes(1));
         group.setTeamSize(4);  // 4 castaways per team for hardcoded rosters
+        group.setLatestEpisodeWatched(0);
         groupRepository.save(group);
 
         // Add users to group
@@ -1112,7 +1132,7 @@ public class DataLoader implements CommandLineRunner {
         pointRuleRepository.saveAll(rules);
 
         // Create teams and assign hardcoded castaways
-        int draftOrder = 1;
+        List<DraftSeedPick> seededPicks = new ArrayList<>();
         for (User user : users) {
             Team team = new Team();
             team.setGroup(group);
@@ -1129,13 +1149,16 @@ public class DataLoader implements CommandLineRunner {
                         TeamCastaway tc = new TeamCastaway();
                         tc.setTeam(team);
                         tc.setCastawayPerformance(perf);
-                        tc.setDraftOrder(draftOrder++);
+                        tc.setDraftOrder(seededPicks.size() + 1);
                         tc.setDraftedAt(LocalDateTime.now());
                         teamCastawayRepository.save(tc);
+                        seededPicks.add(new DraftSeedPick(user, team, perf));
                     }
                 }
             }
         }
+
+        createCompletedDraftForGroup(group, users, seededPicks, DraftStyle.LINEAR);
 
         System.out.println("✓ Created: " + groupName + " with hardcoded team rosters\n");
     }
@@ -1179,7 +1202,8 @@ public class DataLoader implements CommandLineRunner {
         group.setAdmin(users.get(0));
         group.setSeason(season);
         group.setStatus(GroupStatus.COMPLETED);
-        group.setDraftDate(LocalDateTime.now());
+        group.setTeamSize(0);
+        group.setLatestEpisodeWatched(0);
         groupRepository.save(group);
 
         // Add users to group
@@ -1221,6 +1245,8 @@ public class DataLoader implements CommandLineRunner {
         int totalCastaways = seasonPerformances.size();
         int numTeams = users.size();
         int castawaysPerTeam = totalCastaways / numTeams;
+        group.setTeamSize(castawaysPerTeam);
+        groupRepository.save(group);
         
         System.out.println("  Total castaways: " + totalCastaways + " | Teams: " + numTeams + " | Per team: " + castawaysPerTeam);
         
@@ -1237,6 +1263,7 @@ public class DataLoader implements CommandLineRunner {
         
         // Distribute castaways using snake draft pattern
         int draftOrder = 1;
+        List<DraftSeedPick> seededPicks = new ArrayList<>();
         for (int pickNum = 0; pickNum < totalCastaways; pickNum++) {
             // Calculate team position using snake draft logic
             int roundNum = pickNum / numTeams;
@@ -1258,7 +1285,10 @@ public class DataLoader implements CommandLineRunner {
             tc.setDraftOrder(draftOrder++);
             tc.setDraftedAt(LocalDateTime.now());
             teamCastawayRepository.save(tc);
+            seededPicks.add(new DraftSeedPick(team.getUser(), team, perf));
         }
+
+        createCompletedDraftForGroup(group, users, seededPicks, DraftStyle.SNAKE);
 
         System.out.println("✓ Created: " + groupName + " with random team rosters\n");
     }
@@ -1277,6 +1307,151 @@ public class DataLoader implements CommandLineRunner {
             }
         }
         return null;
+    }
+
+    private List<CastawayPerformance> getSeasonCastawayPerformances(Integer seasonNum) {
+        return castawayPerformanceRepository.findBySeasonId(seasonNum);
+    }
+
+    private void createDraftForPendingGroup(Group group,
+                                            DraftStyle style) {
+        int teamSize = group.getTeamSize() != null ? group.getTeamSize() : 0;
+
+        Draft draft = new Draft();
+        draft.setGroup(group);
+        draft.setSeason(group.getSeason());
+        draft.setCreatedBy(group.getAdmin());
+        draft.setStatus(DraftStatus.PENDING);
+        draft.setStyle(style != null ? style : DraftStyle.SNAKE);
+        draft.setScheduledAt(LocalDateTime.now().plusMinutes(1));
+        draft.setStartedAt(null);
+        draft.setTeamSize(teamSize);
+        draft.setTotalParticipants(0);
+        draft.setTotalCastaways(0);
+        draft.setMaxDraftsPerCastaway(1);
+        draft.setTotalPicks(0);
+        draft.setCurrentPickNumber(1);
+        draft.setCurrentTurnUser(null);
+        draftRepository.save(draft);
+        group.setDraft(draft);
+        groupRepository.save(group);
+    }
+
+    private void createCompletedDraftForGroup(Group group,
+                                              List<User> participantsInOrder,
+                                              List<DraftSeedPick> seededPicks,
+                                              DraftStyle style) {
+        if (participantsInOrder.isEmpty() || seededPicks.isEmpty()) {
+            return;
+        }
+
+        int totalParticipants = participantsInOrder.size();
+        int computedTeamSize = Math.max(1, seededPicks.size() / totalParticipants);
+        int teamSize = group.getTeamSize() != null && group.getTeamSize() > 0
+                ? group.getTeamSize()
+                : computedTeamSize;
+
+        if (group.getTeamSize() == null || group.getTeamSize() == 0) {
+            group.setTeamSize(teamSize);
+            groupRepository.save(group);
+        }
+
+        Map<Integer, Integer> participantPositionByUserId = new HashMap<>();
+        for (int i = 0; i < participantsInOrder.size(); i++) {
+            participantPositionByUserId.put(participantsInOrder.get(i).getId(), i);
+        }
+
+        Map<Integer, Integer> picksMadeByUserId = new HashMap<>();
+        for (DraftSeedPick seedPick : seededPicks) {
+            Integer userId = seedPick.user.getId();
+            picksMadeByUserId.put(userId, picksMadeByUserId.getOrDefault(userId, 0) + 1);
+        }
+
+        LocalDateTime startedAt = LocalDateTime.now().minusMinutes(2);
+        LocalDateTime completedAt = LocalDateTime.now().minusMinutes(1);
+
+        Draft draft = new Draft();
+        draft.setGroup(group);
+        draft.setSeason(group.getSeason());
+        draft.setCreatedBy(group.getAdmin());
+        draft.setStatus(DraftStatus.COMPLETED);
+        draft.setStyle(style != null ? style : DraftStyle.SNAKE);
+        draft.setScheduledAt(startedAt.minusMinutes(1));
+        draft.setStartedAt(startedAt);
+        draft.setCompletedAt(completedAt);
+        draft.setTeamSize(teamSize);
+        draft.setTotalParticipants(totalParticipants);
+        draft.setTotalCastaways(getSeasonCastawayPerformances(group.getSeason().getSeason()).size());
+        draft.setMaxDraftsPerCastaway(1);
+        draft.setTotalPicks(seededPicks.size());
+        draft.setCurrentPickNumber(seededPicks.size() + 1);
+        draft.setCurrentTurnUser(null);
+        draftRepository.save(draft);
+        group.setDraft(draft);
+        groupRepository.save(group);
+
+        List<DraftParticipant> participantRows = new ArrayList<>();
+        for (User user : participantsInOrder) {
+            DraftParticipant dp = new DraftParticipant();
+            dp.setDraft(draft);
+            dp.setUser(user);
+            dp.setTeam(seededPicks.stream()
+                    .filter(sp -> sp.user.getId().equals(user.getId()))
+                    .map(sp -> sp.team)
+                    .findFirst()
+                    .orElse(null));
+            dp.setDraftPosition(participantPositionByUserId.get(user.getId()));
+            dp.setPicksMade(picksMadeByUserId.getOrDefault(user.getId(), 0));
+            dp.setActive(true);
+            participantRows.add(dp);
+        }
+        draftParticipantRepository.saveAll(participantRows);
+
+        List<DraftPick> pickRows = new ArrayList<>();
+        for (int i = 0; i < seededPicks.size(); i++) {
+            DraftSeedPick seedPick = seededPicks.get(i);
+            int pickNum = i + 1;
+
+            DraftPick pick = new DraftPick();
+            pick.setDraft(draft);
+            pick.setPickNumber(pickNum);
+            pick.setRoundNumber(((pickNum - 1) / totalParticipants) + 1);
+            pick.setDraftPosition(participantPositionByUserId.get(seedPick.user.getId()));
+            pick.setUser(seedPick.user);
+            pick.setTeam(seedPick.team);
+            pick.setCastawayPerformance(seedPick.castawayPerformance);
+            pick.setPickedAt(startedAt.plusSeconds(pickNum));
+            pickRows.add(pick);
+        }
+        draftPickRepository.saveAll(pickRows);
+    }
+
+    private int calculateDraftPosition(int pickNumber, int numPlayers, DraftStyle style) {
+        switch (style) {
+            case SNAKE: {
+                int round = (pickNumber - 1) / numPlayers;
+                if (round % 2 == 0) {
+                    return (pickNumber - 1) % numPlayers;
+                }
+                return numPlayers - 1 - ((pickNumber - 1) % numPlayers);
+            }
+            case ROUND_ROBIN:
+            case LINEAR:
+            default:
+                return (pickNumber - 1) % numPlayers;
+        }
+    }
+
+    private static class DraftSeedPick {
+        private final User user;
+        private final Team team;
+        private final CastawayPerformance castawayPerformance;
+
+        private DraftSeedPick(User user, Team team, CastawayPerformance castawayPerformance) {
+            this.user = user;
+            this.team = team;
+            this.castawayPerformance = castawayPerformance;
+        }
     }
 
     private void seedGroupForSeason(Integer seasonNum, String groupName) {
@@ -1319,12 +1494,10 @@ public class DataLoader implements CommandLineRunner {
         group.setName(groupName);
         group.setAdmin(users.get(0));
         group.setSeason(season);
-        group.setDraftDate(LocalDateTime.now());
         
         // Set draft configuration for Season 50
         if (seasonNum == 50) {
             group.setStatus(GroupStatus.PENDING);
-            group.setDraftStartTime(LocalDateTime.now().plusMinutes(1));  // 1 minute from now
             group.setTeamSize(5);  // Each team gets 5 castaways
         } else {
             group.setStatus(GroupStatus.COMPLETED);
@@ -1381,6 +1554,7 @@ public class DataLoader implements CommandLineRunner {
         Collections.shuffle(performances, new Random());
 
         Map<Integer, Integer> draftOrderByTeamId = new HashMap<>();
+        List<DraftSeedPick> seededPicks = new ArrayList<>();
         for (int i = 0; i < performances.size(); i++) {
             Team team = teams.get(i % teams.size());
             Integer teamId = team.getId();
@@ -1392,7 +1566,10 @@ public class DataLoader implements CommandLineRunner {
             teamCastaway.setCastawayPerformance(performances.get(i));
             teamCastaway.setDraftOrder(draftOrder);
             teamCastawayRepository.save(teamCastaway);
+            seededPicks.add(new DraftSeedPick(team.getUser(), team, performances.get(i)));
         }
+
+        createCompletedDraftForGroup(group, users, seededPicks, DraftStyle.LINEAR);
 
         for (Team team : teams) {
             pointCalculationService.calculateAndUpdateTeamPoints(team.getId());
