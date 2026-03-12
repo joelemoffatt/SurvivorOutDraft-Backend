@@ -3,6 +3,7 @@ package com.vivida.social.group;
 import com.vivida.draft.DraftService;
 import com.vivida.draft.DraftStyle;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -121,6 +122,11 @@ public class GroupController {
         group.setSeason(season);
         group.setTeamSize(request.getTeamSize());
         group.setLatestEpisodeWatched(latestWatchedEpisode); // null = no episodes watched
+        group.setFirstScoringEpisodeNumber(
+            request.getFirstScoringEpisodeNumber() != null && request.getFirstScoringEpisodeNumber() > 0
+                ? request.getFirstScoringEpisodeNumber()
+                : 1
+        );
         group.setStatus(GroupStatus.PENDING);
 
         // Save group and automatically add admin as member
@@ -143,14 +149,53 @@ public class GroupController {
         groupService.updateGroup(group);
     }
 
+    @PatchMapping("{id}/settings")
+    public GroupDTO updateGroupSettings(@PathVariable Integer id,
+                                        @RequestBody UpdateGroupSettingsRequest request,
+                                        Authentication authentication) {
+        User requestingUser = (User) authentication.getPrincipal();
+        Group group = groupService.getGroupById(id);
+        if (!group.getAdmin().getId().equals(requestingUser.getId())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "Only the group admin can update group settings");
+        }
+        Group updated = groupService.updateGroupSettings(id, request);
+        return GroupDTO.fromEntity(updated);
+    }
+
     @PatchMapping("{id}/watched-episode")
     public GroupDTO updateLatestWatchedEpisode(@PathVariable Integer id,
-                                               @RequestBody UpdateWatchedEpisodeRequest request) {
+                                               @RequestBody UpdateWatchedEpisodeRequest request,
+                                               Authentication authentication) {
+        User requestingUser = (User) authentication.getPrincipal();
         if (request == null || request.getEpisodeId() == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "episodeId is required");
         }
+        Group group = groupService.getGroupById(id);
+        if (!group.getAdmin().getId().equals(requestingUser.getId())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "Only the group admin can update the watched episode");
+        }
         Group updated = groupService.updateLatestEpisodeWatched(id, request.getEpisodeId());
+        return GroupDTO.fromEntity(updated);
+    }
+
+    @PatchMapping("{id}/first-scoring-episode")
+    public GroupDTO updateFirstScoringEpisode(@PathVariable Integer id,
+                                              @RequestBody UpdateFirstScoringEpisodeRequest request,
+                                              Authentication authentication) {
+        User requestingUser = (User) authentication.getPrincipal();
+        if (request == null || request.getFirstScoringEpisodeNumber() == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "firstScoringEpisodeNumber is required");
+        }
+        Group group = groupService.getGroupById(id);
+        if (!group.getAdmin().getId().equals(requestingUser.getId())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "Only the group admin can update the first scoring episode");
+        }
+        Group updated = groupService.updateFirstScoringEpisodeNumber(id, request.getFirstScoringEpisodeNumber());
         return GroupDTO.fromEntity(updated);
     }
 

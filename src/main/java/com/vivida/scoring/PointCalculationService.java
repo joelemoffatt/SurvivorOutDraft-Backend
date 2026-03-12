@@ -3,19 +3,23 @@ package com.vivida.scoring;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.vivida.game.advantage.AdvantageMovement;
 import com.vivida.game.advantage.AdvantageMovementRepository;
-import com.vivida.game.boot.BootRepository;
+import com.vivida.game.boot.Boot;
 import com.vivida.game.castaway.CastawayPerformance;
-import com.vivida.game.challenge.ChallengePerformanceRepository;
-import com.vivida.game.juryVote.JuryVoteRepository;
-import com.vivida.game.tribe.TribeMappingRepository;
-import com.vivida.game.vote.VoteRepository;
+import com.vivida.game.challenge.ChallengePerformance;
 import com.vivida.social.group.Group;
 import com.vivida.social.team.Team;
 import com.vivida.social.team.TeamCastaway;
 import com.vivida.social.team.TeamCastawayRepository;
 import com.vivida.social.team.TeamService;
+import com.vivida.game.boot.BootRepository;
+import com.vivida.game.challenge.ChallengePerformanceRepository;
+import com.vivida.game.juryVote.JuryVoteRepository;
+import com.vivida.game.tribe.TribeMappingRepository;
+import com.vivida.game.vote.VoteRepository;
 
+import java.util.ArrayList;
 import java.util.List;
 
 @Service
@@ -121,128 +125,263 @@ public class PointCalculationService {
      * Count occurrences of a rule type for a specific castaway performance
      */
     private int countOccurrences(CastawayPerformance castawayPerformance, RuleType ruleType, Integer seasonId) {
+        return extractScorableEventFacts(castawayPerformance, ruleType, seasonId).size();
+    }
+
+    /**
+     * Extract all scoreable event facts for a given rule type and castaway.
+     * 
+     * This method is the core extraction engine used by both the legacy
+     * countOccurrences path and the new ScoreProjectionService.
+     * 
+     * Returns a list of ScorableEventFact objects representing each individual
+     * scoreable occurrence, including source details needed for audit trails.
+     */
+    public List<ScorableEventFact> extractScorableEventFacts(
+            CastawayPerformance castawayPerformance,
+            RuleType ruleType,
+            Integer seasonId) {
         return switch (ruleType) {
-            case INDIVIDUAL_IMMUNITY -> countIndividualImmunity(castawayPerformance, seasonId);
-            case FOUND_IDOL -> countFoundIdols(castawayPerformance, seasonId);
-            case FOUND_ADVANTAGE -> countFoundAdvantages(castawayPerformance, seasonId);
-            case PLAYED_IDOL_SUCCESSFULLY -> countPlayedIdolSuccessfully(castawayPerformance, seasonId);
-            case PLAYED_ADVANTAGE_SUCCESSFULLY -> countPlayedAdvantageSuccessfully(castawayPerformance, seasonId);
-            case SOLE_SURVIVOR -> countSoleSurvivor(castawayPerformance, seasonId);
-            case RUNNER_UP -> countRunnerUp(castawayPerformance, seasonId);
-            case FINAL_THREE_BONUS -> countFinalThreeBonus(castawayPerformance, seasonId);
-            case MADE_MERGE -> countMadeMerge(castawayPerformance, seasonId);
-            case MED_EVAC -> countMedEvac(castawayPerformance, seasonId);
-            case QUIT -> countQuit(castawayPerformance, seasonId);
+            case INDIVIDUAL_IMMUNITY -> extractIndividualImmunity(castawayPerformance, seasonId);
+            case FOUND_IDOL -> extractFoundIdols(castawayPerformance, seasonId);
+            case FOUND_ADVANTAGE -> extractFoundAdvantages(castawayPerformance, seasonId);
+            case PLAYED_IDOL_SUCCESSFULLY -> extractPlayedIdolSuccessfully(castawayPerformance, seasonId);
+            case PLAYED_ADVANTAGE_SUCCESSFULLY -> extractPlayedAdvantageSuccessfully(castawayPerformance, seasonId);
+            case SOLE_SURVIVOR -> extractSoleSurvivor(castawayPerformance, seasonId);
+            case RUNNER_UP -> extractRunnerUp(castawayPerformance, seasonId);
+            case FINAL_THREE_BONUS -> extractFinalThreeBonus(castawayPerformance, seasonId);
+            case MADE_MERGE -> extractMadeMerge(castawayPerformance, seasonId);
+            case MED_EVAC -> extractMedEvac(castawayPerformance, seasonId);
+            case QUIT -> extractQuit(castawayPerformance, seasonId);
         };
     }
 
-    private int countMadeMerge(CastawayPerformance castawayPerformance, Integer seasonId) {
-        long count = tribeMappingRepository.countMergedBySeasonAndCastawayPerformance(
-                seasonId,
-                castawayPerformance.getId());
-        return count > 0 ? 1 : 0;
-    }
-
-    private int countIndividualImmunity(CastawayPerformance castawayPerformance, Integer seasonId) {
-        return (int) challengePerformanceRepository.findBySeasonId(seasonId).stream()
+    private List<ScorableEventFact> extractIndividualImmunity(CastawayPerformance castawayPerformance, Integer seasonId) {
+        List<ScorableEventFact> facts = new ArrayList<>();
+        challengePerformanceRepository.findBySeasonId(seasonId).stream()
                 .filter(cp -> cp.getCastaway().getId().equals(castawayPerformance.getId()))
                 .filter(cp -> cp.getWon() != null && cp.getWon())
                 .filter(cp -> {
                     String type = cp.getChallenge().getChallenge_type();
                     return type != null && (type.equals("Individual Immunity and Reward") || type.equals("Individual Immunity"));
                 })
-                .count();
+                .forEach(cp -> facts.add(new ScorableEventFact(
+                    RuleType.INDIVIDUAL_IMMUNITY,
+                    ScoreEventSourceType.CHALLENGE_PERFORMANCE,
+                        cp.getId(),
+                        cp.getChallenge().getEpisode() != null ? cp.getChallenge().getEpisode().getEpisodeNumber() : null,
+                    "Won individual immunity",
+                    1,
+                    null,  // pointsEach set later by projection service
+                    1
+                )));
+        return facts;
     }
 
-    private int countFoundIdols(CastawayPerformance castawayPerformance, Integer seasonId) {
-        return (int) advantageMovementRepository.findBySeasonId(seasonId).stream()
+    private List<ScorableEventFact> extractFoundIdols(CastawayPerformance castawayPerformance, Integer seasonId) {
+        List<ScorableEventFact> facts = new ArrayList<>();
+        advantageMovementRepository.findBySeasonId(seasonId).stream()
                 .filter(am -> am.getCastawayId().getId().equals(castawayPerformance.getId()))
                 .filter(am -> am.getEvent() != null && am.getEvent().equals("Found"))
                 .filter(am -> am.getAdvantageType() != null && am.getAdvantageType().toLowerCase().contains("idol"))
-                .count();
+                .forEach(am -> facts.add(new ScorableEventFact(
+                    RuleType.FOUND_IDOL,
+                    ScoreEventSourceType.ADVANTAGE_MOVEMENT,
+                    am.getId(),
+                    am.getEpisode() != null ? am.getEpisode().getEpisodeNumber() : null,
+                    "Found idol",
+                    1,
+                    null,
+                    1
+                )));
+        return facts;
     }
 
-    private int countFoundAdvantages(CastawayPerformance castawayPerformance, Integer seasonId) {
-        return (int) advantageMovementRepository.findBySeasonId(seasonId).stream()
+    private List<ScorableEventFact> extractFoundAdvantages(CastawayPerformance castawayPerformance, Integer seasonId) {
+        List<ScorableEventFact> facts = new ArrayList<>();
+        advantageMovementRepository.findBySeasonId(seasonId).stream()
                 .filter(am -> am.getCastawayId().getId().equals(castawayPerformance.getId()))
                 .filter(am -> am.getEvent() != null && am.getEvent().equals("Found"))
                 .filter(am -> am.getAdvantageType() != null && !am.getAdvantageType().toLowerCase().contains("idol"))
-                .count();
+                .forEach(am -> facts.add(new ScorableEventFact(
+                    RuleType.FOUND_ADVANTAGE,
+                    ScoreEventSourceType.ADVANTAGE_MOVEMENT,
+                    am.getId(),
+                    am.getEpisode() != null ? am.getEpisode().getEpisodeNumber() : null,
+                    "Found advantage",
+                    1,
+                    null,
+                    1
+                )));
+        return facts;
     }
 
-    private int countPlayedIdolSuccessfully(CastawayPerformance castawayPerformance, Integer seasonId) {
-        return (int) advantageMovementRepository.findBySeasonId(seasonId).stream()
+    private List<ScorableEventFact> extractPlayedIdolSuccessfully(CastawayPerformance castawayPerformance, Integer seasonId) {
+        List<ScorableEventFact> facts = new ArrayList<>();
+        advantageMovementRepository.findBySeasonId(seasonId).stream()
                 .filter(am -> am.getCastawayId().getId().equals(castawayPerformance.getId()))
                 .filter(am -> am.getEvent() != null && am.getEvent().equals("Played"))
                 .filter(am -> am.getAdvantageType() != null && am.getAdvantageType().toLowerCase().contains("idol"))
                 .filter(am -> am.getSuccess() != null && am.getSuccess().equalsIgnoreCase("true"))
-                .count();
+                .forEach(am -> facts.add(new ScorableEventFact(
+                    RuleType.PLAYED_IDOL_SUCCESSFULLY,
+                    ScoreEventSourceType.ADVANTAGE_MOVEMENT,
+                    am.getId(),
+                    am.getEpisode() != null ? am.getEpisode().getEpisodeNumber() : null,
+                    "Played idol successfully",
+                    1,
+                    null,
+                    1
+                )));
+        return facts;
     }
 
-    private int countPlayedAdvantageSuccessfully(CastawayPerformance castawayPerformance, Integer seasonId) {
-        return (int) advantageMovementRepository.findBySeasonId(seasonId).stream()
+    private List<ScorableEventFact> extractPlayedAdvantageSuccessfully(CastawayPerformance castawayPerformance, Integer seasonId) {
+        List<ScorableEventFact> facts = new ArrayList<>();
+        advantageMovementRepository.findBySeasonId(seasonId).stream()
                 .filter(am -> am.getCastawayId().getId().equals(castawayPerformance.getId()))
                 .filter(am -> am.getEvent() != null && am.getEvent().equals("Played"))
                 .filter(am -> am.getAdvantageType() != null && !am.getAdvantageType().toLowerCase().contains("idol"))
                 .filter(am -> am.getSuccess() != null && am.getSuccess().equalsIgnoreCase("true"))
-                .count();
+                .forEach(am -> facts.add(new ScorableEventFact(
+                    RuleType.PLAYED_ADVANTAGE_SUCCESSFULLY,
+                    ScoreEventSourceType.ADVANTAGE_MOVEMENT,
+                    am.getId(),
+                    am.getEpisode() != null ? am.getEpisode().getEpisodeNumber() : null,
+                    "Played advantage successfully",
+                    1,
+                    null,
+                    1
+                )));
+        return facts;
+    }
+
+    private List<ScorableEventFact> extractSoleSurvivor(CastawayPerformance castawayPerformance, Integer seasonId) {
+        List<ScorableEventFact> facts = new ArrayList<>();
+        if (bootExistsForCastaway(castawayPerformance, seasonId)) {
+            bootRepository.findBySeasonId(seasonId).stream()
+                    .filter(boot -> boot.getCastaway().getId().equals(castawayPerformance.getId()))
+                    .filter(boot -> boot.getEvent() != null && boot.getEvent().toLowerCase().equals("first"))
+                    .forEach(boot -> facts.add(new ScorableEventFact(
+                        RuleType.SOLE_SURVIVOR,
+                        ScoreEventSourceType.BOOT,
+                        boot.getId(),
+                        boot.getEpisode() != null ? boot.getEpisode().getEpisodeNumber() : null,
+                        "Sole Survivor",
+                        1,
+                        null,
+                        1
+                    )));
+        }
+        return facts;
+    }
+
+    private List<ScorableEventFact> extractRunnerUp(CastawayPerformance castawayPerformance, Integer seasonId) {
+        List<ScorableEventFact> facts = new ArrayList<>();
+        if (bootExistsForCastaway(castawayPerformance, seasonId)) {
+            bootRepository.findBySeasonId(seasonId).stream()
+                    .filter(boot -> boot.getCastaway().getId().equals(castawayPerformance.getId()))
+                    .filter(boot -> boot.getEvent() != null && boot.getEvent().toLowerCase().equals("second"))
+                    .forEach(boot -> facts.add(new ScorableEventFact(
+                        RuleType.RUNNER_UP,
+                        ScoreEventSourceType.BOOT,
+                        boot.getId(),
+                        boot.getEpisode() != null ? boot.getEpisode().getEpisodeNumber() : null,
+                        "Runner Up",
+                        1,
+                        null,
+                        1
+                    )));
+        }
+        return facts;
+    }
+
+    private List<ScorableEventFact> extractFinalThreeBonus(CastawayPerformance castawayPerformance, Integer seasonId) {
+        List<ScorableEventFact> facts = new ArrayList<>();
+        if (bootExistsForCastaway(castawayPerformance, seasonId)) {
+            bootRepository.findBySeasonId(seasonId).stream()
+                    .filter(boot -> boot.getCastaway().getId().equals(castawayPerformance.getId()))
+                    .filter(boot -> boot.getEvent() != null &&
+                        (boot.getEvent().toLowerCase().equals("third")
+                        || boot.getEvent().toLowerCase().equals("second")
+                        || boot.getEvent().toLowerCase().equals("first")))
+                    .forEach(boot -> facts.add(new ScorableEventFact(
+                        RuleType.FINAL_THREE_BONUS,
+                        ScoreEventSourceType.BOOT,
+                        boot.getId(),
+                        boot.getEpisode() != null ? boot.getEpisode().getEpisodeNumber() : null,
+                        "Final Three Bonus",
+                        1,
+                        null,
+                        1
+                    )));
+        }
+        return facts;
+    }
+
+    private List<ScorableEventFact> extractMadeMerge(CastawayPerformance castawayPerformance, Integer seasonId) {
+        List<ScorableEventFact> facts = new ArrayList<>();
+        var mergedMappings = tribeMappingRepository.findMergedBySeasonAndCastawayPerformance(
+                seasonId,
+                castawayPerformance.getId());
+        if (!mergedMappings.isEmpty()) {
+            var firstMerged = mergedMappings.get(0);
+            facts.add(new ScorableEventFact(
+                RuleType.MADE_MERGE,
+                ScoreEventSourceType.TRIBE_MAPPING,
+                firstMerged.getId(),
+                firstMerged.getEpisode() != null ? firstMerged.getEpisode().getEpisodeNumber() : null,
+                "Made merge",
+                1,
+                null,
+                1
+            ));
+        }
+        return facts;
+    }
+
+    private List<ScorableEventFact> extractMedEvac(CastawayPerformance castawayPerformance, Integer seasonId) {
+        List<ScorableEventFact> facts = new ArrayList<>();
+        if (bootExistsForCastaway(castawayPerformance, seasonId)) {
+            bootRepository.findBySeasonId(seasonId).stream()
+                    .filter(boot -> boot.getCastaway().getId().equals(castawayPerformance.getId()))
+                    .filter(boot -> boot.getEvent() != null && boot.getEvent().toLowerCase().equalsIgnoreCase("medEvac"))
+                    .forEach(boot -> facts.add(new ScorableEventFact(
+                        RuleType.MED_EVAC,
+                        ScoreEventSourceType.BOOT,
+                        boot.getId(),
+                        boot.getEpisode() != null ? boot.getEpisode().getEpisodeNumber() : null,
+                        "Medical evacuation",
+                        1,
+                        null,
+                        1
+                    )));
+        }
+        return facts;
+    }
+
+    private List<ScorableEventFact> extractQuit(CastawayPerformance castawayPerformance, Integer seasonId) {
+        List<ScorableEventFact> facts = new ArrayList<>();
+        if (bootExistsForCastaway(castawayPerformance, seasonId)) {
+            bootRepository.findBySeasonId(seasonId).stream()
+                    .filter(boot -> boot.getCastaway().getId().equals(castawayPerformance.getId()))
+                    .filter(boot -> boot.getEvent() != null && boot.getEvent().toLowerCase().equals("quit"))
+                    .forEach(boot -> facts.add(new ScorableEventFact(
+                        RuleType.QUIT,
+                        ScoreEventSourceType.BOOT,
+                        boot.getId(),
+                        boot.getEpisode() != null ? boot.getEpisode().getEpisodeNumber() : null,
+                        "Quit",
+                        1,
+                        null,
+                        1
+                    )));
+        }
+        return facts;
     }
 
     private boolean bootExistsForCastaway(CastawayPerformance castawayPerformance, Integer seasonId) {
         return bootRepository.findBySeasonId(seasonId).stream()
             .anyMatch(boot -> boot.getCastaway().getId().equals(castawayPerformance.getId()));
-    }
-
-    private int countSoleSurvivor(CastawayPerformance castawayPerformance, Integer seasonId) {
-        if (!bootExistsForCastaway(castawayPerformance, seasonId)) {
-            return 0;
-        }
-        return (int) bootRepository.findBySeasonId(seasonId).stream()
-                .filter(boot -> boot.getCastaway().getId().equals(castawayPerformance.getId()))
-                .filter(boot -> boot.getEvent() != null && boot.getEvent().toLowerCase().equals("first"))
-                .count();
-    }
-
-    private int countRunnerUp(CastawayPerformance castawayPerformance, Integer seasonId) {
-        if (!bootExistsForCastaway(castawayPerformance, seasonId)) {
-            return 0;
-        }
-        return (int) bootRepository.findBySeasonId(seasonId).stream()
-                .filter(boot -> boot.getCastaway().getId().equals(castawayPerformance.getId()))
-                .filter(boot -> boot.getEvent() != null && boot.getEvent().toLowerCase().equals("second"))
-                .count();
-    }
-
-    private int countFinalThreeBonus(CastawayPerformance castawayPerformance, Integer seasonId) {
-        if (!bootExistsForCastaway(castawayPerformance, seasonId)) {
-            return 0;
-        }
-        return (int) bootRepository.findBySeasonId(seasonId).stream()
-                .filter(boot -> boot.getCastaway().getId().equals(castawayPerformance.getId()))
-                .filter(boot -> boot.getEvent() != null &&
-                    (boot.getEvent().toLowerCase().equals("third")
-                    || boot.getEvent().toLowerCase().equals("second")
-                    || boot.getEvent().toLowerCase().equals("first")))
-                .count();
-    }
-
-    private int countMedEvac(CastawayPerformance castawayPerformance, Integer seasonId) {
-        if (!bootExistsForCastaway(castawayPerformance, seasonId)) {
-            return 0;
-        }
-        return (int) bootRepository.findBySeasonId(seasonId).stream()
-                .filter(boot -> boot.getCastaway().getId().equals(castawayPerformance.getId()))
-                .filter(boot -> boot.getEvent() != null && boot.getEvent().toLowerCase().equalsIgnoreCase("medEvac"))
-                .count();
-    }
-
-    private int countQuit(CastawayPerformance castawayPerformance, Integer seasonId) {
-        if (!bootExistsForCastaway(castawayPerformance, seasonId)) {
-            return 0;
-        }
-        return (int) bootRepository.findBySeasonId(seasonId).stream()
-                .filter(boot -> boot.getCastaway().getId().equals(castawayPerformance.getId()))
-                .filter(boot -> boot.getEvent() != null && boot.getEvent().toLowerCase().equals("quit"))
-                .count();
     }
 }

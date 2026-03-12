@@ -16,4 +16,12 @@ public interface TribeMappingRepository extends JpaRepository<TribeMapping, Inte
 
     @Query("SELECT tm FROM TribeMapping tm WHERE tm.episode.id = :episodeId")
     List<TribeMapping> findByEpisodeId(@Param("episodeId") Integer episodeId);
+
+	@Query("SELECT tm FROM TribeMapping tm WHERE tm.season.season = :seasonId " +
+		"AND tm.castawayPerformance.id = :castawayPerformanceId " +
+		"AND LOWER(tm.status) = 'merged' " +
+		"ORDER BY tm.episode.episodeNumber ASC")
+	List<TribeMapping> findMergedBySeasonAndCastawayPerformance(
+		@Param("seasonId") Integer seasonId,
+		@Param("castawayPerformanceId") Integer castawayPerformanceId);
 }

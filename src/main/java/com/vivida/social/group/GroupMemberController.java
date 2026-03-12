@@ -1,5 +1,7 @@
 package com.vivida.social.group;
 
+import com.vivida.auth.User;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -15,8 +17,11 @@ public class GroupMemberController {
     }
     
     @PostMapping("invite-by-username")
-    public GroupMemberDTO inviteByUsername(@RequestBody InviteByUsernameRequest request) {
-        GroupMember member = groupMemberService.inviteByUsername(request.getGroupId(), request.getUsername());
+    public GroupMemberDTO inviteByUsername(@RequestBody InviteByUsernameRequest request,
+                                           Authentication authentication) {
+        User requestingUser = (User) authentication.getPrincipal();
+        GroupMember member = groupMemberService.inviteByUsername(
+                request.getGroupId(), request.getUsername(), requestingUser.getId());
         return new GroupMemberDTO(member);
     }
     
@@ -68,8 +73,10 @@ public class GroupMemberController {
     @PatchMapping("{id}/status")
     public void updateMemberStatus(
             @PathVariable Integer id,
-            @RequestParam MembershipStatus status) {
-        groupMemberService.updateMemberStatus(id, status);
+            @RequestParam MembershipStatus status,
+            Authentication authentication) {
+        User requestingUser = (User) authentication.getPrincipal();
+        groupMemberService.updateMemberStatus(id, status, requestingUser.getId());
     }
 
     @DeleteMapping("{id}")

@@ -53,6 +53,13 @@ public class Group {
     @JoinColumn(name = "latest_episode_watched_id")
     private Episode latestEpisodeWatched;
 
+    /**
+     * First episode number eligible for scoring.
+     * Events before this episode are excluded from points.
+     */
+    @Column(nullable = false)
+    private Integer firstScoringEpisodeNumber = 1;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private GroupStatus status;
@@ -69,11 +76,25 @@ public class Group {
     @OneToMany(mappedBy = "group", cascade = CascadeType.ALL)
     private List<PointRule> pointRules;
 
+    /**
+     * Version number for point rules in this group.
+     * Incremented whenever any point rule changes.
+     * Used to detect stale score calculations.
+     */
+    @Column(nullable = false)
+    private Integer ruleVersion = 1;
+
     @PrePersist
     protected void onCreate() {
         createdAt = LocalDateTime.now();
         if (status == null) {
             status = GroupStatus.PENDING;
+        }
+        if (firstScoringEpisodeNumber == null || firstScoringEpisodeNumber < 1) {
+            firstScoringEpisodeNumber = 1;
+        }
+        if (ruleVersion == null) {
+            ruleVersion = 1;
         }
     }
 }

@@ -21,11 +21,20 @@ public class SchemaPatchRunner {
 
     @PostConstruct
     public void applyPatches() {
+        patchSeasonTable();
         patchGroupsTable();
+        patchScoringProjectionColumns();
         patchDraftsTable();
         patchDraftParticipantsTable();
         patchDraftPicksTable();
         patchDraftCastawaysTable();
+    }
+
+    private void patchSeasonTable() {
+        safeExecute("ALTER TABLE IF EXISTS season ADD COLUMN IF NOT EXISTS game_data_version INTEGER");
+        safeExecute("UPDATE season SET game_data_version = 1 WHERE game_data_version IS NULL");
+        safeExecute("ALTER TABLE IF EXISTS season ALTER COLUMN game_data_version SET DEFAULT 1");
+        safeExecute("ALTER TABLE IF EXISTS season ALTER COLUMN game_data_version SET NOT NULL");
     }
 
     private void patchGroupsTable() {
@@ -33,6 +42,21 @@ public class SchemaPatchRunner {
         safeExecute("UPDATE groups SET latest_episode_watched = 0 WHERE latest_episode_watched IS NULL");
         safeExecute("ALTER TABLE IF EXISTS groups ALTER COLUMN latest_episode_watched SET DEFAULT 0");
         safeExecute("ALTER TABLE IF EXISTS groups ALTER COLUMN latest_episode_watched SET NOT NULL");
+
+        // New relation-backed watched episode column used by Group.latestEpisodeWatched
+        safeExecute("ALTER TABLE IF EXISTS groups ADD COLUMN IF NOT EXISTS latest_episode_watched_id INTEGER");
+    }
+
+    private void patchScoringProjectionColumns() {
+        safeExecute("ALTER TABLE IF EXISTS groups ADD COLUMN IF NOT EXISTS rule_version INTEGER");
+        safeExecute("UPDATE groups SET rule_version = 1 WHERE rule_version IS NULL");
+        safeExecute("ALTER TABLE IF EXISTS groups ALTER COLUMN rule_version SET DEFAULT 1");
+        safeExecute("ALTER TABLE IF EXISTS groups ALTER COLUMN rule_version SET NOT NULL");
+
+        safeExecute("ALTER TABLE IF EXISTS groups ADD COLUMN IF NOT EXISTS first_scoring_episode_number INTEGER");
+        safeExecute("UPDATE groups SET first_scoring_episode_number = 1 WHERE first_scoring_episode_number IS NULL");
+        safeExecute("ALTER TABLE IF EXISTS groups ALTER COLUMN first_scoring_episode_number SET DEFAULT 1");
+        safeExecute("ALTER TABLE IF EXISTS groups ALTER COLUMN first_scoring_episode_number SET NOT NULL");
     }
 
     private void patchDraftsTable() {

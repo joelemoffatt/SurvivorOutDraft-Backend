@@ -11,6 +11,7 @@ import com.vivida.social.group.GroupMemberRepository;
 import com.vivida.social.group.GroupRepository;
 import com.vivida.social.group.GroupStatus;
 import com.vivida.social.group.MembershipStatus;
+import com.vivida.scoring.ScoreProjectionService;
 import com.vivida.social.team.Team;
 import com.vivida.social.team.TeamCastaway;
 import com.vivida.social.team.TeamCastawayRepository;
@@ -22,6 +23,7 @@ import org.springframework.web.server.ResponseStatusException;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
@@ -43,6 +45,7 @@ public class DraftService {
     private final TeamCastawayRepository teamCastawayRepository;
     private final CastawayPerformanceRepository castawayPerformanceRepository;
     private final BootRepository bootRepository;
+    private final ScoreProjectionService scoreProjectionService;
 
     public DraftService(DraftRepository draftRepository,
                         DraftParticipantRepository participantRepository,
@@ -53,7 +56,8 @@ public class DraftService {
                         TeamRepository teamRepository,
                         TeamCastawayRepository teamCastawayRepository,
                         CastawayPerformanceRepository castawayPerformanceRepository,
-                        BootRepository bootRepository) {
+                        BootRepository bootRepository,
+                        ScoreProjectionService scoreProjectionService) {
         this.draftRepository = draftRepository;
         this.participantRepository = participantRepository;
         this.pickRepository = pickRepository;
@@ -64,6 +68,7 @@ public class DraftService {
         this.teamCastawayRepository = teamCastawayRepository;
         this.castawayPerformanceRepository = castawayPerformanceRepository;
         this.bootRepository = bootRepository;
+        this.scoreProjectionService = scoreProjectionService;
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
@@ -145,6 +150,11 @@ public class DraftService {
                     "No accepted members in group");
         }
 
+        if (accepted.size() < 2) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Need at least 2 accepted members to start a draft");
+        }
+
         Collections.shuffle(accepted);
 
         List<DraftParticipant> participants = new ArrayList<>();
@@ -173,6 +183,13 @@ public class DraftService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "No available castaways remain after applying watched-episode boots");
         }
+
+        validateDraftConfigurationAgainstDeadlock(
+            participants.size(),
+            draft.getTeamSize(),
+            allCastaways.size(),
+            draft.getStyle()
+        );
 
         List<DraftCastaway> draftCastaways = allCastaways.stream()
             .map(castawayPerformance -> {
@@ -354,6 +371,9 @@ public class DraftService {
         group.setStatus(GroupStatus.ACTIVE);
         group.setDraft(draft);
         groupRepository.save(group);
+
+        // Draft completion is a scoring trigger: rebuild score projections immediately.
+        scoreProjectionService.recalculateGroupScores(group);
     }
 
     /** Clear all picks and castaways, return to PENDING for reconfiguration. */
@@ -444,6 +464,84 @@ public class DraftService {
             default:
                 return (pickNumber - 1) % numPlayers;
         }
+    }
+
+    /**
+     * Reject draft setups that can strand a player with no legal pick.
+     *
+     * Worst-case model:
+     * - a player's own prior picks permanently remove those castaways from their future options
+     * - other players' picks in the current global cap cycle can consume distinct castaways the player
+     *   has not drafted yet
+     *
+     * If, at any scheduled pick slot, the remaining guaranteed options drop to 0, that slot can deadlock.
+     */
+    private void validateDraftConfigurationAgainstDeadlock(int totalParticipants,
+                                                           int teamSize,
+                                                           int totalCastaways,
+                                                           DraftStyle style) {
+        if (isDeadlockSafe(totalParticipants, teamSize, totalCastaways, style)) {
+            return;
+        }
+
+        int minimumSafeCastaways = findMinimumSafeCastaways(totalParticipants, teamSize, style);
+        throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                "Unsafe draft configuration: " + totalParticipants + " participants with team size " +
+                        teamSize + " and only " + totalCastaways + " available castaways can leave a player " +
+                        "with no legal pick. Need at least " + minimumSafeCastaways +
+                        " available castaways for a guaranteed deadlock-free " + style + " draft.");
+    }
+
+    private boolean isDeadlockSafe(int totalParticipants,
+                                   int teamSize,
+                                   int totalCastaways,
+                                   DraftStyle style) {
+        if (totalParticipants <= 0 || teamSize <= 0 || totalCastaways <= 0) {
+            return false;
+        }
+
+        if (totalCastaways < teamSize) {
+            return false;
+        }
+
+        int totalPicks = totalParticipants * teamSize;
+        int[] picksMadeByPosition = new int[totalParticipants];
+        int[] picksMadeByPositionThisCycle = new int[totalParticipants];
+
+        for (int pickNumber = 1; pickNumber <= totalPicks; pickNumber++) {
+            int position = calculatePosition(pickNumber, totalParticipants, style);
+            int picksBeforeThisTurnInCycle = (pickNumber - 1) % totalCastaways;
+            int otherPlayersPicksThisCycle = picksBeforeThisTurnInCycle - picksMadeByPositionThisCycle[position];
+            int guaranteedOptionsRemaining = totalCastaways
+                    - picksMadeByPosition[position]
+                    - otherPlayersPicksThisCycle;
+
+            if (guaranteedOptionsRemaining <= 0) {
+                return false;
+            }
+
+            picksMadeByPosition[position]++;
+            picksMadeByPositionThisCycle[position]++;
+
+            if (pickNumber % totalCastaways == 0) {
+                Arrays.fill(picksMadeByPositionThisCycle, 0);
+            }
+        }
+
+        return true;
+    }
+
+    private int findMinimumSafeCastaways(int totalParticipants,
+                                         int teamSize,
+                                         DraftStyle style) {
+        int totalPicks = totalParticipants * teamSize;
+        int candidate = Math.max(teamSize, 1);
+
+        while (candidate <= totalPicks && !isDeadlockSafe(totalParticipants, teamSize, candidate, style)) {
+            candidate++;
+        }
+
+        return candidate;
     }
 
     /**

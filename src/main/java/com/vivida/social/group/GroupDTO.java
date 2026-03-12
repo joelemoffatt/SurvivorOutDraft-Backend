@@ -2,6 +2,7 @@ package com.vivida.social.group;
 
 import com.vivida.draft.Draft;
 import com.vivida.draft.DraftStatus;
+import com.vivida.draft.DraftStyle;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -20,6 +21,7 @@ public class GroupDTO {
     private SeasonDTO season;
     private DraftRefDTO draft;
     private Integer teamSize;
+    private Integer firstScoringEpisodeNumber;
     private EpisodeDTO latestEpisodeWatched;
     private GroupStatus status;
     private LocalDateTime createdAt;
@@ -60,6 +62,7 @@ public class GroupDTO {
     public static class DraftRefDTO {
         private Integer id;
         private DraftStatus status;
+        private DraftStyle style;
         private LocalDateTime scheduledAt;
         private LocalDateTime startedAt;
         private LocalDateTime completedAt;
@@ -70,6 +73,7 @@ public class GroupDTO {
         dto.setId(group.getId());
         dto.setName(group.getName());
         dto.setTeamSize(group.getTeamSize());
+        dto.setFirstScoringEpisodeNumber(group.getFirstScoringEpisodeNumber());
         if (group.getLatestEpisodeWatched() != null) {
             EpisodeDTO epDTO = new EpisodeDTO();
             epDTO.setId(group.getLatestEpisodeWatched().getId());
@@ -85,6 +89,7 @@ public class GroupDTO {
             DraftRefDTO draftDTO = new DraftRefDTO();
             draftDTO.setId(draft.getId());
             draftDTO.setStatus(draft.getStatus());
+            draftDTO.setStyle(draft.getStyle());
             draftDTO.setScheduledAt(draft.getScheduledAt());
             draftDTO.setStartedAt(draft.getStartedAt());
             draftDTO.setCompletedAt(draft.getCompletedAt());

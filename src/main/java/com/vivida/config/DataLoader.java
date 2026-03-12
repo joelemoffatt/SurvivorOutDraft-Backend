@@ -1032,7 +1032,7 @@ public class DataLoader implements CommandLineRunner {
         group.setAdmin(users.get(0));
         group.setSeason(season);
         group.setStatus(GroupStatus.PENDING);
-        group.setTeamSize(4);
+        group.setTeamSize(10);
         group.setLatestEpisodeWatched(episodeCache.get(50002));
         groupRepository.save(group);
 

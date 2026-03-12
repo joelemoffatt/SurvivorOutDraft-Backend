@@ -63,8 +63,12 @@ public class GroupMemberService {
         groupMemberRepository.save(groupMember);
     }
 
-    public void updateMemberStatus(int id, MembershipStatus status) {
+    public void updateMemberStatus(int id, MembershipStatus status, Integer requestingUserId) {
         GroupMember member = getGroupMemberById(id);
+        if (!member.getUser().getId().equals(requestingUserId)) {
+            throw new ResponseStatusException(org.springframework.http.HttpStatus.FORBIDDEN,
+                    "You can only update your own membership status");
+        }
         MembershipStatus previousStatus = member.getStatus();
         member.setStatus(status);
         groupMemberRepository.save(member);
@@ -94,7 +98,7 @@ public class GroupMemberService {
         groupMemberRepository.deleteById(id);
     }
     
-    public GroupMember inviteByUsername(Integer groupId, String username) {
+    public GroupMember inviteByUsername(Integer groupId, String username, Integer requestingUserId) {
         // Find the user by username
         User user = userRepository.findByUsername(username)
                 .orElseThrow(() -> new ResponseStatusException(
@@ -104,6 +108,12 @@ public class GroupMemberService {
         Group group = groupRepository.findById(groupId)
                 .orElseThrow(() -> new ResponseStatusException(
                         HttpStatus.NOT_FOUND, "Group not found with id: " + groupId));
+        
+        // Only the group admin can invite members
+        if (!group.getAdmin().getId().equals(requestingUserId)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "Only the group admin can invite members");
+        }
         
         // Check if user is already a member or invited
         if (groupMemberRepository.existsByGroupIdAndUserId(groupId, user.getId())) {

@@ -58,6 +58,14 @@ public class Season {
     @Column
     private Integer episodesNumber;
 
+    /**
+     * Version number for game event data in this season.
+     * Incremented whenever imported or edited source event data changes.
+     * Used to detect stale score calculations.
+     */
+    @Column(nullable = false)
+    private Integer gameDataVersion = 1;
+
     @JsonIgnore
     @OneToMany(mappedBy = "season", cascade = CascadeType.ALL)
     private List<Episode> episodes;

@@ -18,6 +18,7 @@ public class CreateGroupRequest {
     private SeasonRef season;
     private Integer teamSize;
     private EpisodeRef latestWatchedEpisode;
+    private Integer firstScoringEpisodeNumber;
     private DraftStyle style;
     private LocalDateTime scheduledAt;
 
