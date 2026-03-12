@@ -49,6 +49,12 @@ public class SchemaPatchRunner {
         safeExecute("ALTER TABLE IF EXISTS groups ADD COLUMN IF NOT EXISTS latest_episode_watched_id INTEGER");
     }
 
+    private void patchGroupMembersTable() {
+        safeExecute("ALTER TABLE IF EXISTS group_members ADD COLUMN IF NOT EXISTS last_accessed_at TIMESTAMP");
+        safeExecute("UPDATE group_members SET last_accessed_at = joined_at WHERE status = 'ACCEPTED' AND last_accessed_at IS NULL");
+        safeExecute("CREATE INDEX IF NOT EXISTS idx_group_members_user_status_last_accessed ON group_members (user_id, status, last_accessed_at DESC)");
+    }
+
     private void patchScoringProjectionColumns() {
         safeExecute("ALTER TABLE IF EXISTS groups ADD COLUMN IF NOT EXISTS rule_version INTEGER");
         safeExecute("UPDATE groups SET rule_version = 1 WHERE rule_version IS NULL");

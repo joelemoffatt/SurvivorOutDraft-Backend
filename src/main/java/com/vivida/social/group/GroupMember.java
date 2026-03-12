@@ -39,11 +39,17 @@ public class GroupMember {
     @Column(nullable = false)
     private LocalDateTime joinedAt;
 
+    @Column(name = "last_accessed_at")
+    private LocalDateTime lastAccessedAt;
+
     @PrePersist
     protected void onCreate() {
         joinedAt = LocalDateTime.now();
         if (status == null) {
             status = MembershipStatus.INVITED;
+        }
+        if (status == MembershipStatus.ACCEPTED && lastAccessedAt == null) {
+            lastAccessedAt = joinedAt;
         }
     }
 }

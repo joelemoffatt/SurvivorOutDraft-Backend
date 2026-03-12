@@ -11,11 +11,13 @@ public class GroupMemberDTO {
     public UserDTO user;
     public MembershipStatus status;
     public LocalDateTime joinedAt;
+    public LocalDateTime lastAccessedAt;
 
     public GroupMemberDTO(GroupMember member) {
         this.id = member.getId();
         this.status = member.getStatus();
         this.joinedAt = member.getJoinedAt();
+        this.lastAccessedAt = member.getLastAccessedAt();
         
         if (member.getGroup() != null) {
             this.group = new GroupMinimalDTO(member.getGroup());

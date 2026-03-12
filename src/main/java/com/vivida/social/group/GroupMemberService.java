@@ -2,6 +2,7 @@ package com.vivida.social.group;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 import com.vivida.auth.User;
@@ -9,6 +10,7 @@ import com.vivida.auth.UserRepository;
 import com.vivida.social.team.Team;
 import com.vivida.social.team.TeamRepository;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 @Service
@@ -71,6 +73,9 @@ public class GroupMemberService {
         }
         MembershipStatus previousStatus = member.getStatus();
         member.setStatus(status);
+        if (status == MembershipStatus.ACCEPTED) {
+            member.setLastAccessedAt(LocalDateTime.now());
+        }
         groupMemberRepository.save(member);
         
         // When a user accepts an invitation, create their team automatically
@@ -132,5 +137,18 @@ public class GroupMemberService {
     
     public List<GroupMember> getPendingInvitationsByUserId(Integer userId) {
         return groupMemberRepository.findByUserIdAndStatus(userId, MembershipStatus.INVITED);
+    }
+
+    @Transactional
+    public GroupMember markGroupAccessed(Integer groupId, Integer userId) {
+        GroupMember member = groupMemberRepository.findByGroupIdAndUserIdAndStatus(
+                        groupId,
+                        userId,
+                        MembershipStatus.ACCEPTED)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.FORBIDDEN,
+                        "You must be an accepted member of this group"));
+
+        member.setLastAccessedAt(LocalDateTime.now());
+        return groupMemberRepository.save(member);
     }
 }

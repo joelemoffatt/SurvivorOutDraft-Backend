@@ -78,6 +78,14 @@ public class GroupController {
                 .collect(Collectors.toList());
     }
 
+    @PostMapping("{id}/access")
+    public GroupDTO markGroupAccessed(@PathVariable Integer id,
+                                      Authentication authentication) {
+        User requestingUser = (User) authentication.getPrincipal();
+        Group group = groupService.markGroupAccessed(id, requestingUser.getId());
+        return GroupDTO.fromEntity(group, pointRuleRepository.findByGroupId(id));
+    }
+
     @PostMapping
     public GroupDTO addGroup(@RequestBody CreateGroupRequest request) {
         // Validate required fields

@@ -170,7 +170,9 @@ public class GroupService {
     }
 
     public List<Group> getGroupsByUserId(int userId) {
-        List<GroupMember> memberships = groupMemberRepository.findByUserIdAndStatus(userId, MembershipStatus.ACCEPTED);
+        List<GroupMember> memberships = groupMemberRepository.findByUserIdAndStatusOrderByRecentAccess(
+                userId,
+                MembershipStatus.ACCEPTED);
         return memberships.stream().map(GroupMember::getGroup).toList();
     }
 
@@ -316,6 +318,20 @@ public class GroupService {
 
         scoreProjectionService.recalculateGroupScores(updated);
         return updated;
+    }
+
+    @Transactional
+    public Group markGroupAccessed(Integer groupId, Integer userId) {
+        Group group = getGroupById(groupId);
+        GroupMember membership = groupMemberRepository.findByGroupIdAndUserIdAndStatus(
+                        groupId,
+                        userId,
+                        MembershipStatus.ACCEPTED)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.FORBIDDEN,
+                        "You must be an accepted member of this group"));
+        membership.setLastAccessedAt(java.time.LocalDateTime.now());
+        groupMemberRepository.save(membership);
+        return group;
     }
 
     public List<PointRule> getRulesForGroup(Integer groupId) {
