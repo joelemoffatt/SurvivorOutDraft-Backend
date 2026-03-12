@@ -1,5 +1,6 @@
 package com.vivida.social.team;
 
+import com.vivida.scoring.ScoreBreakdownDTO;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -45,6 +46,11 @@ public class TeamController {
             @PathVariable Integer groupId,
             @PathVariable Integer userId) {
         return new TeamDTO(teamService.getTeamByGroupAndUser(groupId, userId));
+    }
+
+    @GetMapping("{id}/score-breakdown")
+    public ScoreBreakdownDTO getTeamScoreBreakdown(@PathVariable Integer id) {
+        return teamService.getScoreBreakdown(id);
     }
 
     @PostMapping

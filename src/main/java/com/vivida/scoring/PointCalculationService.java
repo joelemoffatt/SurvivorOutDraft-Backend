@@ -69,7 +69,7 @@ public class PointCalculationService {
         Integer seasonId = group.getSeason().getSeason();
         
         int totalPoints = 0;
-        List<PointRule> rules = pointRuleRepository.findByGroupIdAndActive(group.getId(), true);
+        List<PointRule> rules = pointRuleRepository.findByGroupId(group.getId());
 
         String castawayName = castawayPerformance.getCastaway().getName();
         System.out.println("  Castaway: " + castawayName + " (perfId=" + castawayPerformance.getId() + ")");
@@ -160,16 +160,12 @@ public class PointCalculationService {
         List<ScorableEventFact> facts = new ArrayList<>();
         challengePerformanceRepository.findBySeasonId(seasonId).stream()
                 .filter(cp -> cp.getCastaway().getId().equals(castawayPerformance.getId()))
-                .filter(cp -> cp.getWon() != null && cp.getWon())
-                .filter(cp -> {
-                    String type = cp.getChallenge().getChallenge_type();
-                    return type != null && (type.equals("Individual Immunity and Reward") || type.equals("Individual Immunity"));
-                })
+                .filter(cp -> cp.getWonIndividualImmunity() != null && cp.getWonIndividualImmunity())
                 .forEach(cp -> facts.add(new ScorableEventFact(
                     RuleType.INDIVIDUAL_IMMUNITY,
                     ScoreEventSourceType.CHALLENGE_PERFORMANCE,
-                        cp.getId(),
-                        cp.getChallenge().getEpisode() != null ? cp.getChallenge().getEpisode().getEpisodeNumber() : null,
+                    cp.getId(),
+                    cp.getChallenge().getEpisode() != null ? cp.getChallenge().getEpisode().getEpisodeNumber() : null,
                     "Won individual immunity",
                     1,
                     null,  // pointsEach set later by projection service

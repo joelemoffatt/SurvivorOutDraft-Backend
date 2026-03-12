@@ -3,12 +3,16 @@ package com.vivida.social.group;
 import com.vivida.draft.Draft;
 import com.vivida.draft.DraftStatus;
 import com.vivida.draft.DraftStyle;
+import com.vivida.scoring.PointRule;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 import java.time.LocalDateTime;
+import java.util.Collections;
+import java.util.List;
+import java.util.stream.Collectors;
 
 @Getter
 @Setter
@@ -25,6 +29,7 @@ public class GroupDTO {
     private EpisodeDTO latestEpisodeWatched;
     private GroupStatus status;
     private LocalDateTime createdAt;
+    private List<PointRuleDTO> pointRules;
 
     @Getter
     @Setter
@@ -53,6 +58,15 @@ public class GroupDTO {
         private Integer id;
         private Integer episodeNumber;
         private String episodeTitle;
+    }
+
+    @Getter
+    @Setter
+    @AllArgsConstructor
+    @NoArgsConstructor
+    public static class PointRuleDTO {
+        private String ruleType;
+        private Integer points;
     }
 
     @Getter
@@ -111,6 +125,21 @@ public class GroupDTO {
             dto.setSeason(seasonDTO);
         }
 
+        return dto;
+    }
+
+    public static GroupDTO fromEntity(Group group, List<PointRule> rules) {
+        GroupDTO dto = fromEntity(group);
+        if (rules != null) {
+            dto.setPointRules(rules.stream().map(r -> {
+                PointRuleDTO p = new PointRuleDTO();
+                p.setRuleType(r.getRuleType().name());
+                p.setPoints(r.getPoints());
+                return p;
+            }).collect(Collectors.toList()));
+        } else {
+            dto.setPointRules(Collections.emptyList());
+        }
         return dto;
     }
 }

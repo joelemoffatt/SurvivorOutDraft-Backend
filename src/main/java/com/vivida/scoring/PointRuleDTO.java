@@ -9,7 +9,6 @@ public class PointRuleDTO {
     public String ruleType;
     public Integer points;
     public String description;
-    public Boolean active;
 
     public PointRuleDTO(PointRule pointRule) {
         this.id = pointRule.getId();
@@ -17,6 +16,5 @@ public class PointRuleDTO {
         this.ruleType = pointRule.getRuleType().name();
         this.points = pointRule.getPoints();
         this.description = pointRule.getDescription();
-        this.active = pointRule.getActive();
     }
 }

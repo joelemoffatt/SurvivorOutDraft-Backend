@@ -12,11 +12,18 @@ import com.vivida.game.episode.Episode;
 import com.vivida.game.episode.EpisodeRepository;
 import com.vivida.game.season.Season;
 import com.vivida.game.season.SeasonRepository;
+import com.vivida.scoring.PointRule;
+import com.vivida.scoring.PointRuleRepository;
+import com.vivida.scoring.RuleType;
 import com.vivida.scoring.ScoreProjectionService;
+import com.vivida.scoring.TeamCastawayScoreEventRepository;
 import com.vivida.social.team.Team;
 import com.vivida.social.team.TeamRepository;
 
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 @Service
 public class GroupService {
@@ -28,6 +35,8 @@ public class GroupService {
     private final SeasonRepository seasonRepository;
     private final DraftRepository draftRepository;
     private final ScoreProjectionService scoreProjectionService;
+    private final PointRuleRepository pointRuleRepository;
+    private final TeamCastawayScoreEventRepository teamCastawayScoreEventRepository;
 
     public GroupService(GroupRepository groupRepository,
                         GroupMemberRepository groupMemberRepository,
@@ -35,7 +44,9 @@ public class GroupService {
                         EpisodeRepository episodeRepository,
                         SeasonRepository seasonRepository,
                         DraftRepository draftRepository,
-                        ScoreProjectionService scoreProjectionService) {
+                        ScoreProjectionService scoreProjectionService,
+                        PointRuleRepository pointRuleRepository,
+                        TeamCastawayScoreEventRepository teamCastawayScoreEventRepository) {
         this.groupRepository = groupRepository;
         this.groupMemberRepository = groupMemberRepository;
         this.teamRepository = teamRepository;
@@ -43,6 +54,101 @@ public class GroupService {
         this.seasonRepository = seasonRepository;
         this.draftRepository = draftRepository;
         this.scoreProjectionService = scoreProjectionService;
+        this.pointRuleRepository = pointRuleRepository;
+        this.teamCastawayScoreEventRepository = teamCastawayScoreEventRepository;
+    }
+
+    @Transactional
+    public List<PointRule> createRulesForGroup(Group group,
+            List<CreateGroupRequest.PointRuleRequest> ruleRequests) {
+        if (group == null || group.getId() == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Group is required");
+        }
+        if (ruleRequests == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "pointRules list is required");
+        }
+        List<PointRule> rules = new ArrayList<>();
+        for (CreateGroupRequest.PointRuleRequest req : ruleRequests) {
+            if (req == null || req.getRuleType() == null || req.getPoints() == null) {
+                continue;
+            }
+            PointRule rule = new PointRule();
+            rule.setGroup(group);
+            rule.setRuleType(parseRuleType(req.getRuleType()));
+            rule.setPoints(req.getPoints());
+            rules.add(rule);
+        }
+        return pointRuleRepository.saveAll(rules);
+    }
+
+    private RuleType parseRuleType(String ruleTypeRaw) {
+        try {
+            return RuleType.valueOf(ruleTypeRaw);
+        } catch (IllegalArgumentException ex) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid ruleType: " + ruleTypeRaw);
+        }
+    }
+
+    @Transactional
+    public List<PointRule> syncRulesForGroup(Integer groupId, List<UpdateGroupSettingsRequest.PointRuleRequest> ruleRequests) {
+        Group group = getGroupById(groupId);
+        if (ruleRequests == null) {
+            return pointRuleRepository.findByGroupId(groupId);
+        }
+
+        Map<RuleType, Integer> requested = new LinkedHashMap<>();
+        for (UpdateGroupSettingsRequest.PointRuleRequest req : ruleRequests) {
+            if (req == null || req.getRuleType() == null || req.getPoints() == null) {
+                continue;
+            }
+            requested.put(parseRuleType(req.getRuleType()), req.getPoints());
+        }
+
+        List<PointRule> existing = pointRuleRepository.findByGroupId(groupId);
+        Map<RuleType, PointRule> existingByType = new LinkedHashMap<>();
+        List<PointRule> duplicates = new ArrayList<>();
+        for (PointRule rule : existing) {
+            if (!existingByType.containsKey(rule.getRuleType())) {
+                existingByType.put(rule.getRuleType(), rule);
+            } else {
+                duplicates.add(rule);
+            }
+        }
+
+        List<PointRule> toSave = new ArrayList<>();
+        for (Map.Entry<RuleType, Integer> entry : requested.entrySet()) {
+            RuleType ruleType = entry.getKey();
+            Integer points = entry.getValue();
+            PointRule existingRule = existingByType.get(ruleType);
+            if (existingRule == null) {
+                PointRule created = new PointRule();
+                created.setGroup(group);
+                created.setRuleType(ruleType);
+                created.setPoints(points);
+                toSave.add(created);
+            } else if (!points.equals(existingRule.getPoints())) {
+                existingRule.setPoints(points);
+                toSave.add(existingRule);
+            }
+        }
+
+        if (!toSave.isEmpty()) {
+            pointRuleRepository.saveAll(toSave);
+        }
+
+        List<PointRule> toDelete = new ArrayList<>(duplicates);
+        for (PointRule existingRule : existingByType.values()) {
+            if (!requested.containsKey(existingRule.getRuleType())) {
+                toDelete.add(existingRule);
+            }
+        }
+
+        if (!toDelete.isEmpty()) {
+            teamCastawayScoreEventRepository.deleteByGroupId(groupId);
+            pointRuleRepository.deleteAll(toDelete);
+        }
+
+        return pointRuleRepository.findByGroupId(groupId);
     }
 
     public List<Group> getAllGroups() {
@@ -195,6 +301,11 @@ public class GroupService {
 
         Group updated = groupRepository.save(group);
 
+        // Sync point rules (create/update/delete by ruleType) when provided.
+        if (request.getPointRules() != null) {
+            syncRulesForGroup(groupId, request.getPointRules());
+        }
+
         // Keep pending draft configuration in sync with editable group settings.
         draftRepository.findByGroupIdAndStatus(groupId, DraftStatus.PENDING).ifPresent(draft -> {
             draft.setSeason(season);
@@ -205,6 +316,10 @@ public class GroupService {
 
         scoreProjectionService.recalculateGroupScores(updated);
         return updated;
+    }
+
+    public List<PointRule> getRulesForGroup(Integer groupId) {
+        return pointRuleRepository.findByGroupId(groupId);
     }
 
     public void deleteGroupById(int id) {

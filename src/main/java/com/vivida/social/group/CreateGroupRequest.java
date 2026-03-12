@@ -7,6 +7,8 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
 
 @Getter
 @Setter
@@ -21,6 +23,16 @@ public class CreateGroupRequest {
     private Integer firstScoringEpisodeNumber;
     private DraftStyle style;
     private LocalDateTime scheduledAt;
+    private List<PointRuleRequest> pointRules = new ArrayList<>();
+
+    @Getter
+    @Setter
+    @AllArgsConstructor
+    @NoArgsConstructor
+    public static class PointRuleRequest {
+        private String ruleType;
+        private Integer points;
+    }
 
     @Getter
     @Setter

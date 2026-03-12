@@ -138,8 +138,8 @@ public class ScoreProjectionService {
             run = calculationRunRepository.save(run);
             System.out.println("Started score calculation run: " + run.getId() + " for group: " + groupId);
             
-            // Load all teams in the group
-            List<Team> teams = group.getTeams();
+            // Load all teams in the group - query directly to avoid stale lazy-loaded collection
+            List<Team> teams = teamService.getTeamsByGroupId(groupId);
             if (teams == null || teams.isEmpty()) {
                 System.out.println("  No teams found in group");
                 completeCalculationRun(run);
@@ -150,10 +150,10 @@ public class ScoreProjectionService {
             scoreEventRepository.deleteByGroupId(groupId);
             System.out.println("  Deleted old score events for group");
             
-            // Get all active rules
-            List<PointRule> activeRules = pointRuleRepository.findByGroupIdAndActive(groupId, true);
+            // Get all rules
+            List<PointRule> activeRules = pointRuleRepository.findByGroupId(groupId);
             if (activeRules.isEmpty()) {
-                System.out.println("  No active rules found in group");
+                System.out.println("  No rules found in group");
                 completeCalculationRun(run);
                 return;
             }
@@ -199,7 +199,8 @@ public class ScoreProjectionService {
             GroupScoreCalculationRun run,
             List<TeamCastawayScoreEvent> allEvents
     ) {
-        List<TeamCastaway> roster = team.getRoster();
+        // Query directly to avoid stale lazy-loaded collection
+        List<TeamCastaway> roster = teamCastawayRepository.findByTeamId(team.getId());
         if (roster == null || roster.isEmpty()) {
             return;
         }
@@ -287,7 +288,8 @@ public class ScoreProjectionService {
         
         for (Team team : teams) {
             int teamTotal = 0;
-            List<TeamCastaway> roster = team.getRoster();
+            // Query directly to avoid stale lazy-loaded collection
+            List<TeamCastaway> roster = teamCastawayRepository.findByTeamId(team.getId());
             
             if (roster != null) {
                 for (TeamCastaway teamCastaway : roster) {

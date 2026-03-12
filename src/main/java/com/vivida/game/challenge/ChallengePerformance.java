@@ -34,4 +34,12 @@ public class ChallengePerformance {
     
     @Column(nullable = false)
     private Boolean won;
+
+    private Boolean wonIndividualImmunity;
+    
+    private Boolean wonTeamImmunity;
+    
+    private Boolean wonIndividualReward;
+    
+    private Boolean wonTeamReward;
 }

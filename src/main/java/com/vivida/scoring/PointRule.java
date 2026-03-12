@@ -9,7 +9,12 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 @Entity
-@Table(name = "point_rules")
+@Table(
+    name = "point_rules",
+    uniqueConstraints = {
+        @UniqueConstraint(name = "uk_point_rules_group_rule_type", columnNames = {"group_id", "rule_type"})
+    }
+)
 @Setter
 @Getter
 @AllArgsConstructor
@@ -33,7 +38,4 @@ public class PointRule {
 
     @Column(length = 500)
     private String description;
-
-    @Column(nullable = false)
-    private Boolean active = true;
 }

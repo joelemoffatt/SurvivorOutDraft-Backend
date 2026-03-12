@@ -1,9 +1,13 @@
 package com.vivida.social.team;
 
+import com.vivida.scoring.ScoreBreakdownDTO;
+import com.vivida.scoring.TeamCastawayScoreEvent;
+import com.vivida.scoring.TeamCastawayScoreEventRepository;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.util.Comparator;
 import java.util.List;
 
 @Service
@@ -11,10 +15,15 @@ public class TeamService {
 
     private final TeamRepository teamRepository;
     private final TeamCastawayRepository teamCastawayRepository;
+    private final TeamCastawayScoreEventRepository scoreEventRepository;
 
-    public TeamService(TeamRepository teamRepository, TeamCastawayRepository teamCastawayRepository) {
+    public TeamService(
+            TeamRepository teamRepository,
+            TeamCastawayRepository teamCastawayRepository,
+            TeamCastawayScoreEventRepository scoreEventRepository) {
         this.teamRepository = teamRepository;
         this.teamCastawayRepository = teamCastawayRepository;
+        this.scoreEventRepository = scoreEventRepository;
     }
 
     public List<Team> getAllTeams() {
@@ -65,5 +74,40 @@ public class TeamService {
 
     public void deleteTeamById(int id) {
         teamRepository.deleteById(id);
+    }
+
+    public ScoreBreakdownDTO getScoreBreakdown(int teamId) {
+        Team team = getTeamById(teamId);
+        List<TeamCastaway> roster = teamCastawayRepository.findByTeamId(teamId);
+
+        ScoreBreakdownDTO dto = new ScoreBreakdownDTO();
+        dto.teamId = team.getId();
+        dto.teamName = team.getTeamName();
+        dto.totalPoints = team.getTotalPoints();
+        dto.castaways = roster.stream()
+            .sorted(Comparator.comparing(tc -> tc.getDraftOrder() != null ? tc.getDraftOrder() : 0))
+            .map(tc -> {
+                ScoreBreakdownDTO.CastawayBreakdown cb = new ScoreBreakdownDTO.CastawayBreakdown();
+                cb.teamCastawayId = tc.getId();
+                cb.castawayPerformanceId = tc.getCastawayPerformance().getId();
+                cb.castawayName = tc.getCastawayPerformance().getCastaway().getName();
+                cb.totalPoints = tc.getPoints();
+
+                List<TeamCastawayScoreEvent> events = scoreEventRepository.findByTeamCastawayId(tc.getId());
+                cb.scoreEvents = events.stream()
+                    .sorted(Comparator.comparing(e -> e.getEpisodeNumber() != null ? e.getEpisodeNumber() : 0))
+                    .map(e -> {
+                        ScoreBreakdownDTO.ScoreEventDTO sed = new ScoreBreakdownDTO.ScoreEventDTO();
+                        sed.id = e.getId();
+                        sed.episodeNumber = e.getEpisodeNumber();
+                        sed.eventLabel = e.getEventLabel();
+                        sed.totalPoints = e.getTotalPoints();
+                        return sed;
+                    })
+                    .toList();
+                return cb;
+            })
+            .toList();
+        return dto;
     }
 }

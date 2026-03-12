@@ -23,7 +23,9 @@ public class SchemaPatchRunner {
     public void applyPatches() {
         patchSeasonTable();
         patchGroupsTable();
+        patchGroupMembersTable();
         patchScoringProjectionColumns();
+        patchPointRulesTable();
         patchDraftsTable();
         patchDraftParticipantsTable();
         patchDraftPicksTable();
@@ -57,6 +59,12 @@ public class SchemaPatchRunner {
         safeExecute("UPDATE groups SET first_scoring_episode_number = 1 WHERE first_scoring_episode_number IS NULL");
         safeExecute("ALTER TABLE IF EXISTS groups ALTER COLUMN first_scoring_episode_number SET DEFAULT 1");
         safeExecute("ALTER TABLE IF EXISTS groups ALTER COLUMN first_scoring_episode_number SET NOT NULL");
+    }
+
+    private void patchPointRulesTable() {
+        safeExecute("ALTER TABLE IF EXISTS point_rules ALTER COLUMN active DROP NOT NULL");
+        safeExecute("ALTER TABLE IF EXISTS point_rules ALTER COLUMN active DROP DEFAULT");
+        safeExecute("ALTER TABLE IF EXISTS point_rules DROP COLUMN IF EXISTS active");
     }
 
     private void patchDraftsTable() {

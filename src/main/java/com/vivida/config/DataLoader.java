@@ -42,10 +42,10 @@ import com.vivida.game.vote.Vote;
 import com.vivida.game.vote.VoteRepository;
 import com.vivida.game.vote.VoteRound;
 import com.vivida.game.vote.VoteRoundRepository;
-import com.vivida.scoring.PointCalculationService;
 import com.vivida.scoring.PointRule;
 import com.vivida.scoring.PointRuleRepository;
 import com.vivida.scoring.RuleType;
+import com.vivida.scoring.ScoreProjectionService;
 import com.vivida.social.group.Group;
 import com.vivida.social.group.GroupMember;
 import com.vivida.social.group.GroupMemberRepository;
@@ -110,7 +110,7 @@ public class DataLoader implements CommandLineRunner {
     @Autowired private DraftParticipantRepository draftParticipantRepository;
     @Autowired private DraftPickRepository draftPickRepository;
     @Autowired private PointRuleRepository pointRuleRepository;
-    @Autowired private PointCalculationService pointCalculationService;
+    @Autowired private ScoreProjectionService scoreProjectionService;
     @Autowired private PasswordEncoder passwordEncoder;
     
     @PersistenceContext
@@ -277,6 +277,8 @@ public class DataLoader implements CommandLineRunner {
                         team_castaways,
                         teams,
                         point_rules,
+                        team_castaway_score_events,
+                        group_score_calculation_runs,
                         group_members,
                         groups
                     RESTART IDENTITY CASCADE
@@ -638,6 +640,10 @@ public class DataLoader implements CommandLineRunner {
             perf.setPlace(getInt(item, "place"));
             perf.setSatOut(getBoolean(item, "sat_out"));
             perf.setWon(getBoolean(item, "won"));
+            perf.setWonIndividualImmunity(getBoolean(item, "won_individual_immunity"));
+            perf.setWonTeamImmunity(getBoolean(item, "won_team_immunity"));
+            perf.setWonIndividualReward(getBoolean(item, "won_individual_reward"));
+            perf.setWonTeamReward(getBoolean(item, "won_team_reward"));
             performances.add(perf);
         }
         challengePerformanceRepository.saveAll(performances);
@@ -990,10 +996,46 @@ public class DataLoader implements CommandLineRunner {
         for (int season : Arrays.asList(47, 48, 49)) {
             seedColorTeamGroup(season, "Colors S" + season);
         }
+
+        recalculateSeededGroupScores();
         
         System.out.println("═".repeat(80));
         System.out.println("✓ TEST DATA SEEDING COMPLETE");
         System.out.println("═".repeat(80) + "\n");
+    }
+
+    private void recalculateSeededGroupScores() {
+        System.out.println("[SECTION 3] Recalculating seeded group scores\n");
+
+        int recalculated = 0;
+        int skipped = 0;
+        int failed = 0;
+
+        List<Group> groups = groupRepository.findAll();
+        for (Group group : groups) {
+            List<TeamCastaway> roster = teamCastawayRepository.findByTeamGroupIdOrderByDraftOrderAsc(group.getId());
+            if (roster.isEmpty()) {
+                skipped++;
+                continue;
+            }
+
+            try {
+                scoreProjectionService.recalculateGroupScores(group);
+                recalculated++;
+                System.out.println("  ✓ Recalculated group: " + group.getName() + " (id=" + group.getId() + ")");
+            } catch (Exception e) {
+                failed++;
+                System.out.println("  ⚠ Failed to recalculate group: " + group.getName() + " (id=" + group.getId() + ") - " + e.getMessage());
+            }
+        }
+
+        System.out.println("\n  Recalculated: " + recalculated);
+        System.out.println("  Skipped (no roster): " + skipped);
+        System.out.println("  Failed: " + failed + "\n");
+
+        if (failed > 0) {
+            throw new RuntimeException("Score recalculation failed for " + failed + " seeded group(s)");
+        }
     }
 
     private void seedSeason50PendingGroup(String groupName, List<String> usernames) {
@@ -1569,9 +1611,7 @@ public class DataLoader implements CommandLineRunner {
 
         createCompletedDraftForGroup(group, users, seededPicks, DraftStyle.LINEAR);
 
-        for (Team team : teams) {
-            pointCalculationService.calculateAndUpdateTeamPoints(team.getId());
-        }
+        scoreProjectionService.recalculateGroupScores(group);
 
         System.out.println("✓ Test group seeded for Season " + seasonNum + ": " + groupName + ". Final team points:");
         for (Team team : teams) {
@@ -1587,7 +1627,6 @@ public class DataLoader implements CommandLineRunner {
         rule.setRuleType(ruleType);
         rule.setPoints(points);
         rule.setDescription(description);
-        rule.setActive(true);
         return rule;
     }
 

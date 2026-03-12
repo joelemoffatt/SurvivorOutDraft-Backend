@@ -2,6 +2,8 @@ package com.vivida.social.group;
 
 import com.vivida.draft.DraftService;
 import com.vivida.draft.DraftStyle;
+import com.vivida.scoring.PointRule;
+import com.vivida.scoring.PointRuleRepository;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
@@ -26,17 +28,20 @@ public class GroupController {
     private final UserRepository userRepository;
     private final EpisodeRepository episodeRepository;
     private final SeasonRepository seasonRepository;
+    private final PointRuleRepository pointRuleRepository;
 
     public GroupController(GroupService groupService,
                            DraftService draftService,
                            UserRepository userRepository,
                            EpisodeRepository episodeRepository,
-                           SeasonRepository seasonRepository) {
+                           SeasonRepository seasonRepository,
+                           PointRuleRepository pointRuleRepository) {
         this.groupService = groupService;
         this.draftService = draftService;
         this.userRepository = userRepository;
         this.episodeRepository = episodeRepository;
         this.seasonRepository = seasonRepository;
+        this.pointRuleRepository = pointRuleRepository;
     }
 
     @GetMapping
@@ -48,7 +53,8 @@ public class GroupController {
 
     @GetMapping("{id}")
     public GroupDTO getGroupById(@PathVariable Integer id) {
-        return GroupDTO.fromEntity(groupService.getGroupById(id));
+        Group group = groupService.getGroupById(id);
+        return GroupDTO.fromEntity(group, pointRuleRepository.findByGroupId(id));
     }
 
     @GetMapping("admin/{adminId}")
@@ -86,6 +92,9 @@ public class GroupController {
         }
         if (request.getTeamSize() == null || request.getTeamSize() <= 0) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Team size must be a positive integer");
+        }
+        if (request.getPointRules() == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "pointRules list is required");
         }
 
         // Fetch User (admin) entity
@@ -141,7 +150,10 @@ public class GroupController {
             request.getScheduledAt()
         );
 
-        return GroupDTO.fromEntity(groupService.getGroupById(savedGroup.getId()));
+        // Create point rules from request list
+        List<PointRule> rules = groupService.createRulesForGroup(savedGroup, request.getPointRules());
+
+        return GroupDTO.fromEntity(savedGroup, rules);
     }
 
     @PutMapping
@@ -160,7 +172,7 @@ public class GroupController {
                     "Only the group admin can update group settings");
         }
         Group updated = groupService.updateGroupSettings(id, request);
-        return GroupDTO.fromEntity(updated);
+        return GroupDTO.fromEntity(updated, pointRuleRepository.findByGroupId(id));
     }
 
     @PatchMapping("{id}/watched-episode")

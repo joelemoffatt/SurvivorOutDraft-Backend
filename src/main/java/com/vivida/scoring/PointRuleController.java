@@ -33,13 +33,6 @@ public class PointRuleController {
                 .toList();
     }
 
-    @GetMapping("group/{groupId}/active")
-    public List<PointRuleDTO> getActivePointRulesByGroupId(@PathVariable Integer groupId) {
-        return pointRuleService.getActivePointRulesByGroupId(groupId).stream()
-                .map(PointRuleDTO::new)
-                .toList();
-    }
-
     @PostMapping
     public void addPointRule(@RequestBody PointRule pointRule) {
         pointRuleService.insertPointRule(pointRule);

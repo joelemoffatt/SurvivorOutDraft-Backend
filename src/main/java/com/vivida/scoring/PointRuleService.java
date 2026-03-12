@@ -29,10 +29,6 @@ public class PointRuleService {
         return pointRuleRepository.findByGroupId(groupId);
     }
 
-    public List<PointRule> getActivePointRulesByGroupId(int groupId) {
-        return pointRuleRepository.findByGroupIdAndActive(groupId, true);
-    }
-
     public void insertPointRule(PointRule pointRule) {
         pointRuleRepository.save(pointRule);
     }
