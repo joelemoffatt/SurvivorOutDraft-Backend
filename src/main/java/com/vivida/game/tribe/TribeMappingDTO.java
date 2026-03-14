@@ -7,7 +7,10 @@ public class TribeMappingDTO {
     public Integer id;
     public Integer seasonId;
     public Integer episodeId;
+    public Integer episodeNumber;
+    public Integer castawayPerformanceId;
     public Integer castawayId;
+    public String castawayJsonId;
     public String castawayName;
     public Integer tribeId;
     public String tribeName;
@@ -23,11 +26,14 @@ public class TribeMappingDTO {
         
         if (mapping.getEpisode() != null) {
             this.episodeId = mapping.getEpisode().getId();
+            this.episodeNumber = mapping.getEpisode().getEpisodeNumber();
         }
         
         if (mapping.getCastawayPerformance() != null) {
-            this.castawayId = mapping.getCastawayPerformance().getId();
+            this.castawayPerformanceId = mapping.getCastawayPerformance().getId();
             if (mapping.getCastawayPerformance().getCastaway() != null) {
+                this.castawayId = mapping.getCastawayPerformance().getCastaway().getId();
+                this.castawayJsonId = mapping.getCastawayPerformance().getCastaway().getJson_id();
                 this.castawayName = mapping.getCastawayPerformance().getCastaway().getName();
             }
         }

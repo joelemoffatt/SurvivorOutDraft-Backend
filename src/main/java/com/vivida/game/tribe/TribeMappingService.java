@@ -19,6 +19,10 @@ public class TribeMappingService {
         return tribeMappingRepository.findAll();
     }
 
+    public List<TribeMapping> getTribeMappingsByTribeId(Integer tribeId) {
+        return tribeMappingRepository.findByTribeIdOrderByEpisodeNumber(tribeId);
+    }
+
     public TribeMapping getTribeMappingById(int id) {
         return tribeMappingRepository.findById(id).orElseThrow(() -> new ResponseStatusException(
                 HttpStatus.NOT_FOUND, "TribeMapping not found with id " + id

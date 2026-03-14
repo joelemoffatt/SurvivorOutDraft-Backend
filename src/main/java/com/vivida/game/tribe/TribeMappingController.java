@@ -15,8 +15,12 @@ public class TribeMappingController {
     }
 
     @GetMapping
-    public List<TribeMappingDTO> getTribeMappings() {
-        return tribeMappingService.getAllTribeMappings().stream()
+    public List<TribeMappingDTO> getTribeMappings(@RequestParam(required = false) Integer tribeId) {
+        List<TribeMapping> mappings = tribeId != null
+                ? tribeMappingService.getTribeMappingsByTribeId(tribeId)
+                : tribeMappingService.getAllTribeMappings();
+
+        return mappings.stream()
                 .map(TribeMappingDTO::new)
                 .toList();
     }
