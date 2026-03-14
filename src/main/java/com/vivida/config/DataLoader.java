@@ -987,7 +987,17 @@ public class DataLoader implements CommandLineRunner {
         season50Rosters.put("devin", Arrays.asList("Angelina", "Chrissy", "Emily", "Genevieve"));
         
         seedJeffsProbstFanClub(50, "Jeff's Probst Fan Club 50", season50Rosters);
-        seedSeason50PendingGroup("a test", Arrays.asList("mckenna", "joel", "jess", "kc"));
+
+        Map<String, List<String>> season49S49Rosters = new LinkedHashMap<>();
+        season49S49Rosters.put("joel", Arrays.asList("sophie", "nate", "savannah"));
+        season49S49Rosters.put("mckenna", Arrays.asList("jawan", "jake", "mc"));
+        season49S49Rosters.put("devin", Arrays.asList("steven", "sage", "nate"));
+        season49S49Rosters.put("kaitlin", Arrays.asList("shannon", "rizo", "jeremiah"));
+        season49S49Rosters.put("kc", Arrays.asList("jason", "kristina", "alex"));
+        season49S49Rosters.put("jess", Arrays.asList("sophi", "matt", "annie"));
+
+        seedJeffsProbstFanClub(49, "S49", season49S49Rosters);
+        // seedSeason50PendingGroup("a test", Arrays.asList("mckenna", "joel", "jess", "kc"));
         
         System.out.println("═".repeat(80) + "\n");
         
@@ -1111,8 +1121,19 @@ public class DataLoader implements CommandLineRunner {
     }
 
     private void seedJeffsProbstFanClub(Integer seasonNum, String groupName, Map<String, List<String>> userRosters) {
-        if (groupRepository.findByName(groupName).isPresent()) {
-            System.out.println("✓ Group already exists: " + groupName + " (skipping)\n");
+        Optional<Group> existingGroupOpt = groupRepository.findByName(groupName);
+        if (existingGroupOpt.isPresent()) {
+            Group existingGroup = existingGroupOpt.get();
+            if (seasonNum != null) {
+                if (seasonNum == 49) {
+                    existingGroup.setLatestEpisodeWatched(episodeCache.get(49013));
+                    groupRepository.save(existingGroup);
+                } else if (seasonNum == 50) {
+                    existingGroup.setLatestEpisodeWatched(episodeCache.get(50002));
+                    groupRepository.save(existingGroup);
+                }
+            }
+            System.out.println("✓ Group already exists: " + groupName + " (updated watched episode)\n");
             return;
         }
 
@@ -1149,6 +1170,13 @@ public class DataLoader implements CommandLineRunner {
         group.setSeason(season);
         group.setStatus(GroupStatus.ACTIVE);
         group.setTeamSize(4);  // 4 castaways per team for hardcoded rosters
+        if (seasonNum != null) {
+            if (seasonNum == 49) {
+                group.setLatestEpisodeWatched(episodeCache.get(49013));
+            } else if (seasonNum == 50) {
+                group.setLatestEpisodeWatched(episodeCache.get(50002));
+            }
+        }
         groupRepository.save(group);
 
         // Add users to group

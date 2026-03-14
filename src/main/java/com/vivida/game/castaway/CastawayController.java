@@ -33,6 +33,11 @@ public class CastawayController {
         return castawayService.getCastawayById(id);
     }
 
+    @GetMapping("search")
+    public List<CastawaySearchResultDTO> searchCastaways(@RequestParam String query) {
+        return castawayService.searchCastawaysWithSeason(query);
+    }
+
     @GetMapping("by-json-id/{jsonId}")
     public Castaway getCastawayByJsonId(@PathVariable String jsonId) {
         return castawayService.getCastawayByJsonId(jsonId);

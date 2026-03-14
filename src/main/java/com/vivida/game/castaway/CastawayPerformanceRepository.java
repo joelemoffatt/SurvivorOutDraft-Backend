@@ -16,4 +16,7 @@ public interface CastawayPerformanceRepository extends JpaRepository<CastawayPer
 
     @Query("SELECT cp FROM CastawayPerformance cp WHERE cp.id = :id AND cp.season.season = :seasonId")
     Optional<CastawayPerformance> findByIdAndSeasonId(@Param("id") Integer id, @Param("seasonId") Integer seasonId);
+
+    @Query("SELECT cp FROM CastawayPerformance cp WHERE cp.castaway.id = :castawayId")
+    List<CastawayPerformance> findByCastawayId(@Param("castawayId") Integer castawayId);
 }

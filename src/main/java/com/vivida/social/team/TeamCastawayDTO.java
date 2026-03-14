@@ -22,20 +22,24 @@ public class TeamCastawayDTO {
 
     public static class CastawayPerformanceDTO {
         public Integer id;
+        public Integer seasonId;
         public CastawayDTO castaway;
 
         public CastawayPerformanceDTO(com.vivida.game.castaway.CastawayPerformance performance) {
             this.id = performance.getId();
+            this.seasonId = performance.getSeason() != null ? performance.getSeason().getSeason() : null;
             this.castaway = new CastawayDTO(performance.getCastaway());
         }
 
         public static class CastawayDTO {
             public Integer id;
+            public String json_id;
             public String name;
             public String full_name;
 
             public CastawayDTO(com.vivida.game.castaway.Castaway castaway) {
                 this.id = castaway.getId();
+                this.json_id = castaway.getJson_id();
                 this.name = castaway.getName();
                 this.full_name = castaway.getFull_name();
             }
