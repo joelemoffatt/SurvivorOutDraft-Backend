@@ -977,7 +977,46 @@ public class DataLoader implements CommandLineRunner {
         System.out.println("═".repeat(80) + "\n");
 
         // ==================== SECTION 1: SEASON 50 - HARDCODED TEAM ROSTERS ====================
-        System.out.println("[SECTION 1] Season 50 - Jeff's Probst Fan Club 50 (Hardcoded Teams)\n");
+        System.out.println("[SECTION 1] Season 46-50 - Jeff's Probst Fan Club (Hardcoded Teams)\n");
+        Map<String, List<String>> season46SRosters = new LinkedHashMap<>();
+        season46SRosters.put("joel", Arrays.asList("venus", "bhanu", "jem"));
+        season46SRosters.put("devin", Arrays.asList("q", "randen", "tim"));
+        season46SRosters.put("kaitlin", Arrays.asList("maria", "ben", "moriah"));
+        season46SRosters.put("kc", Arrays.asList("tevin", "tiffany", "charlie"));
+        season46SRosters.put("jess", Arrays.asList("kenzie", "hunter", "soda"));
+        
+        seedJeffsProbstFanClub(46, "Jeff's Probst Fan Club 46", season46SRosters);
+        
+        Map<String, List<String>> season47SRosters = new LinkedHashMap<>();
+        season47SRosters.put("joel", Arrays.asList("kyle", "sierra", "caroline", "kishan"));
+        season47SRosters.put("mckenna", Arrays.asList("tk", "aysha", "sierra", "sol"));
+        season47SRosters.put("devin", Arrays.asList("kyle", "aysha", "genevieve", "teeny"));
+        season47SRosters.put("kaitlin", Arrays.asList("kyle", "sierra", "caroline", "sol"));
+        season47SRosters.put("kc", Arrays.asList("sierra", "rachel", "kishan", "gabe"));
+        season47SRosters.put("jess", Arrays.asList("kyle", "tiyana", "anika", "kishan"));
+        
+        seedJeffsProbstFanClub(47, "Jeff's Probst Fan Club 47", season47SRosters);
+        
+        Map<String, List<String>> season48SRosters = new LinkedHashMap<>();
+        season48SRosters.put("joel", Arrays.asList("thomas", "kamilla", "kevin", "shauhin"));
+        season48SRosters.put("mckenna", Arrays.asList("joe", "mitch", "mary", "star"));
+        season48SRosters.put("devin", Arrays.asList("mary", "mitch", "chrissy", "star"));
+        season48SRosters.put("kc", Arrays.asList("joe", "mitch", "shauhin", "mary"));
+        season48SRosters.put("kaitlin", Arrays.asList("kyle", "chrissy", "bianca", "cedrek"));
+        season48SRosters.put("jess", Arrays.asList("kyle", "eva", "kevin", "thomas"));
+        
+        seedJeffsProbstFanClub(48, "Jeff's Probst Fan Club 48", season48SRosters);
+        
+        Map<String, List<String>> season49S49Rosters = new LinkedHashMap<>();
+        season49S49Rosters.put("joel", Arrays.asList("sophie", "nate", "savannah"));
+        season49S49Rosters.put("mckenna", Arrays.asList("jawan", "jake", "mc"));
+        season49S49Rosters.put("devin", Arrays.asList("steven", "sage", "nate"));
+        season49S49Rosters.put("kaitlin", Arrays.asList("shannon", "rizo", "jeremiah"));
+        season49S49Rosters.put("kc", Arrays.asList("jason", "kristina", "alex"));
+        season49S49Rosters.put("jess", Arrays.asList("sophi", "matt", "annie"));
+        
+        seedJeffsProbstFanClub(49, "Jeff's Probst Fan Club 49", season49S49Rosters);
+        
         Map<String, List<String>> season50Rosters = new LinkedHashMap<>();
         season50Rosters.put("joel", Arrays.asList("Jonathan", "Kamilla", "Rizo", "Charlie"));
         season50Rosters.put("jess", Arrays.asList("Cirie", "Joe", "Q", "Rick"));
@@ -988,17 +1027,6 @@ public class DataLoader implements CommandLineRunner {
         
         seedJeffsProbstFanClub(50, "Jeff's Probst Fan Club 50", season50Rosters);
 
-        Map<String, List<String>> season49S49Rosters = new LinkedHashMap<>();
-        season49S49Rosters.put("joel", Arrays.asList("sophie", "nate", "savannah"));
-        season49S49Rosters.put("mckenna", Arrays.asList("jawan", "jake", "mc"));
-        season49S49Rosters.put("devin", Arrays.asList("steven", "sage", "nate"));
-        season49S49Rosters.put("kaitlin", Arrays.asList("shannon", "rizo", "jeremiah"));
-        season49S49Rosters.put("kc", Arrays.asList("jason", "kristina", "alex"));
-        season49S49Rosters.put("jess", Arrays.asList("sophi", "matt", "annie"));
-
-        seedJeffsProbstFanClub(49, "S49", season49S49Rosters);
-        // seedSeason50PendingGroup("a test", Arrays.asList("mckenna", "joel", "jess", "kc"));
-        
         System.out.println("═".repeat(80) + "\n");
         
         // ==================== SECTION 2: SEASONS 47-49 - COLOR TEAMS WITH RANDOM ROSTERS ====================
@@ -1125,7 +1153,16 @@ public class DataLoader implements CommandLineRunner {
         if (existingGroupOpt.isPresent()) {
             Group existingGroup = existingGroupOpt.get();
             if (seasonNum != null) {
-                if (seasonNum == 49) {
+                if (seasonNum == 46) {
+                    existingGroup.setLatestEpisodeWatched(episodeCache.get(46013));
+                    groupRepository.save(existingGroup);
+                } else if (seasonNum == 47) {
+                    existingGroup.setLatestEpisodeWatched(episodeCache.get(47014));
+                    groupRepository.save(existingGroup);
+                } else if (seasonNum == 48) {
+                    existingGroup.setLatestEpisodeWatched(episodeCache.get(48013));
+                    groupRepository.save(existingGroup);
+                } else if (seasonNum == 49) {
                     existingGroup.setLatestEpisodeWatched(episodeCache.get(49013));
                     groupRepository.save(existingGroup);
                 } else if (seasonNum == 50) {
@@ -1171,7 +1208,13 @@ public class DataLoader implements CommandLineRunner {
         group.setStatus(GroupStatus.ACTIVE);
         group.setTeamSize(4);  // 4 castaways per team for hardcoded rosters
         if (seasonNum != null) {
-            if (seasonNum == 49) {
+            if (seasonNum == 46) {
+                group.setLatestEpisodeWatched(episodeCache.get(46013));
+            } else if (seasonNum == 47) {
+                group.setLatestEpisodeWatched(episodeCache.get(47014));
+            } else if (seasonNum == 48) {
+                group.setLatestEpisodeWatched(episodeCache.get(48013));
+            } else if (seasonNum == 49) {
                 group.setLatestEpisodeWatched(episodeCache.get(49013));
             } else if (seasonNum == 50) {
                 group.setLatestEpisodeWatched(episodeCache.get(50002));
@@ -1258,7 +1301,7 @@ public class DataLoader implements CommandLineRunner {
                 user.setUsername(colorName);
                 user.setEmail(colorName + "@example.com");
                 user.setPassword(passwordEncoder.encode("123"));
-                user.setRole(Role.USER);
+                user.setRole(colorName.equals("blue") ? Role.ADMIN : Role.USER);
                 user.setEnabled(true);
                 userRepository.save(user);
             }
@@ -1551,7 +1594,7 @@ public class DataLoader implements CommandLineRunner {
                 user.setUsername(username);
                 user.setEmail(email);
                 user.setPassword(passwordEncoder.encode("123"));
-                user.setRole(Role.USER);
+                user.setRole(username.equals("joel") ? Role.ADMIN : Role.USER);
                 user.setEnabled(true);
                 userRepository.save(user);
             }

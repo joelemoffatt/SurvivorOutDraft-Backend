@@ -6,6 +6,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 import com.vivida.auth.User;
+import com.vivida.auth.Role;
 import com.vivida.auth.UserRepository;
 import com.vivida.social.team.Team;
 import com.vivida.social.team.TeamRepository;
@@ -104,6 +105,10 @@ public class GroupMemberService {
     }
     
     public GroupMember inviteByUsername(Integer groupId, String username, Integer requestingUserId) {
+        User requestingUser = userRepository.findById(requestingUserId)
+            .orElseThrow(() -> new ResponseStatusException(
+                HttpStatus.NOT_FOUND, "Requesting user not found with id: " + requestingUserId));
+
         // Find the user by username
         User user = userRepository.findByUsername(username)
                 .orElseThrow(() -> new ResponseStatusException(
@@ -114,8 +119,10 @@ public class GroupMemberService {
                 .orElseThrow(() -> new ResponseStatusException(
                         HttpStatus.NOT_FOUND, "Group not found with id: " + groupId));
         
-        // Only the group admin can invite members
-        if (!group.getAdmin().getId().equals(requestingUserId)) {
+        // Group admin can invite, and platform ADMIN can override
+        boolean isGroupAdmin = group.getAdmin().getId().equals(requestingUserId);
+        boolean isPlatformAdmin = requestingUser.getRole() == Role.ADMIN;
+        if (!isGroupAdmin && !isPlatformAdmin) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN,
                     "Only the group admin can invite members");
         }
