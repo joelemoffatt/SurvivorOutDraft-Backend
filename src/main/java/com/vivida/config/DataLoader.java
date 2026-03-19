@@ -1113,7 +1113,7 @@ public class DataLoader implements CommandLineRunner {
         group.setSeason(season);
         group.setStatus(GroupStatus.PENDING);
         group.setTeamSize(10);
-        group.setLatestEpisodeWatched(episodeCache.get(50002));
+        group.setLatestEpisodeWatched(episodeCache.get(50003));
         groupRepository.save(group);
 
         Map<Integer, Team> teamByUserId = new HashMap<>();

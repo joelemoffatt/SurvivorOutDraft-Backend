@@ -1,5 +1,7 @@
 package com.vivida.social.team;
 
+import com.vivida.game.boot.Boot;
+import com.vivida.game.boot.BootRepository;
 import com.vivida.scoring.ScoreBreakdownDTO;
 import com.vivida.scoring.TeamCastawayScoreEvent;
 import com.vivida.scoring.TeamCastawayScoreEventRepository;
@@ -8,7 +10,10 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
+import java.util.Map;
 
 @Service
 public class TeamService {
@@ -16,14 +21,17 @@ public class TeamService {
     private final TeamRepository teamRepository;
     private final TeamCastawayRepository teamCastawayRepository;
     private final TeamCastawayScoreEventRepository scoreEventRepository;
+    private final BootRepository bootRepository;
 
     public TeamService(
             TeamRepository teamRepository,
             TeamCastawayRepository teamCastawayRepository,
-            TeamCastawayScoreEventRepository scoreEventRepository) {
+            TeamCastawayScoreEventRepository scoreEventRepository,
+            BootRepository bootRepository) {
         this.teamRepository = teamRepository;
         this.teamCastawayRepository = teamCastawayRepository;
         this.scoreEventRepository = scoreEventRepository;
+        this.bootRepository = bootRepository;
     }
 
     public List<Team> getAllTeams() {
@@ -74,6 +82,122 @@ public class TeamService {
 
     public void deleteTeamById(int id) {
         teamRepository.deleteById(id);
+    }
+
+    public TeamDTO getTeamDtoById(int id) {
+        Team team = getTeamById(id);
+        TeamDTO dto = new TeamDTO(team);
+        populateRosterPlacement(team, dto);
+        return dto;
+    }
+
+    public List<TeamDTO> getTeamDtosByGroupId(int groupId) {
+        return getTeamsByGroupId(groupId).stream()
+                .map(team -> {
+                    TeamDTO dto = new TeamDTO(team);
+                    populateRosterPlacement(team, dto);
+                    return dto;
+                })
+                .toList();
+    }
+
+    public List<TeamDTO> getTeamDtosByUserId(int userId) {
+        return getTeamsByUserId(userId).stream()
+                .map(team -> {
+                    TeamDTO dto = new TeamDTO(team);
+                    populateRosterPlacement(team, dto);
+                    return dto;
+                })
+                .toList();
+    }
+
+    public TeamDTO getTeamDtoByGroupAndUser(int groupId, int userId) {
+        Team team = getTeamByGroupAndUser(groupId, userId);
+        TeamDTO dto = new TeamDTO(team);
+        populateRosterPlacement(team, dto);
+        return dto;
+    }
+
+    public List<TeamDTO> getAllTeamDtos() {
+        return getAllTeams().stream()
+                .map(team -> {
+                    TeamDTO dto = new TeamDTO(team);
+                    populateRosterPlacement(team, dto);
+                    return dto;
+                })
+                .toList();
+    }
+
+    private void populateRosterPlacement(Team team, TeamDTO dto) {
+        if (dto.roster == null || dto.roster.isEmpty()) {
+            return;
+        }
+
+        Integer seasonId = team.getGroup() != null && team.getGroup().getSeason() != null
+                ? team.getGroup().getSeason().getSeason()
+                : null;
+        Integer latestEpisodeNumber = team.getGroup() != null && team.getGroup().getLatestEpisodeWatched() != null
+                ? team.getGroup().getLatestEpisodeWatched().getEpisodeNumber()
+                : null;
+
+        if (seasonId == null) {
+            return;
+        }
+
+        List<Boot> boots = latestEpisodeNumber != null
+                ? bootRepository.findBySeasonIdAndEpisodeNumberLessThanEqual(seasonId, latestEpisodeNumber)
+                : bootRepository.findBySeasonId(seasonId);
+
+        boots.sort(
+                Comparator.comparingInt((Boot boot) ->
+                                boot.getEpisode() != null && boot.getEpisode().getEpisodeNumber() != null
+                                        ? boot.getEpisode().getEpisodeNumber()
+                                        : 0)
+                        .reversed());
+
+        Map<Integer, String> placementByPerformanceId = new HashMap<>();
+        for (Boot boot : boots) {
+            Integer performanceId = boot.getCastaway() != null ? boot.getCastaway().getId() : null;
+            if (performanceId == null || placementByPerformanceId.containsKey(performanceId)) {
+                continue;
+            }
+            placementByPerformanceId.put(performanceId, derivePlacementFromBootEvent(boot.getEvent()));
+        }
+
+        for (TeamCastawayDTO castaway : dto.roster) {
+            Integer performanceId = castaway.castawayPerformance != null ? castaway.castawayPerformance.id : null;
+            castaway.placement = performanceId != null ? placementByPerformanceId.get(performanceId) : null;
+        }
+    }
+
+    private String derivePlacementFromBootEvent(String event) {
+        if (event == null || event.isBlank()) {
+            return "booted";
+        }
+
+        String normalized = event.trim().toLowerCase(Locale.ROOT);
+        return switch (normalized) {
+            case "first" -> "first";
+            case "second" -> "second";
+            case "third" -> "third";
+            case "lostfire", "lostfinalfire" -> "lostFire";
+            case "votedout", "quit", "medevac" -> "booted";
+            default -> {
+                if (normalized.contains("lost") && normalized.contains("fire")) {
+                    yield "lostFire";
+                }
+                if (normalized.contains("first")) {
+                    yield "first";
+                }
+                if (normalized.contains("second") || normalized.contains("runner")) {
+                    yield "second";
+                }
+                if (normalized.contains("third") || normalized.contains("3rd")) {
+                    yield "third";
+                }
+                yield "booted";
+            }
+        };
     }
 
     public ScoreBreakdownDTO getScoreBreakdown(int teamId) {

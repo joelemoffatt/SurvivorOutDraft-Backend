@@ -17,35 +17,29 @@ public class TeamController {
 
     @GetMapping
     public List<TeamDTO> getTeams() {
-        return teamService.getAllTeams().stream()
-                .map(TeamDTO::new)
-                .toList();
+        return teamService.getAllTeamDtos();
     }
 
     @GetMapping("{id}")
     public TeamDTO getTeamById(@PathVariable Integer id) {
-        return new TeamDTO(teamService.getTeamById(id));
+        return teamService.getTeamDtoById(id);
     }
 
     @GetMapping("group/{groupId}")
     public List<TeamDTO> getTeamsByGroupId(@PathVariable Integer groupId) {
-        return teamService.getTeamsByGroupId(groupId).stream()
-                .map(TeamDTO::new)
-                .toList();
+        return teamService.getTeamDtosByGroupId(groupId);
     }
 
     @GetMapping("user/{userId}")
     public List<TeamDTO> getTeamsByUserId(@PathVariable Integer userId) {
-        return teamService.getTeamsByUserId(userId).stream()
-                .map(TeamDTO::new)
-                .toList();
+        return teamService.getTeamDtosByUserId(userId);
     }
 
     @GetMapping("group/{groupId}/user/{userId}")
     public TeamDTO getTeamByGroupAndUser(
             @PathVariable Integer groupId,
             @PathVariable Integer userId) {
-        return new TeamDTO(teamService.getTeamByGroupAndUser(groupId, userId));
+        return teamService.getTeamDtoByGroupAndUser(groupId, userId);
     }
 
     @GetMapping("{id}/score-breakdown")

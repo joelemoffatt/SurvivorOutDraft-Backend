@@ -10,6 +10,7 @@ public class TeamCastawayDTO {
     public Integer draftOrder;
     public Integer points;
     public LocalDateTime draftedAt;
+    public String placement;
     public CastawayPerformanceDTO castawayPerformance;
 
     public TeamCastawayDTO(TeamCastaway teamCastaway) {
@@ -17,6 +18,7 @@ public class TeamCastawayDTO {
         this.draftOrder = teamCastaway.getDraftOrder();
         this.points = teamCastaway.getPoints();
         this.draftedAt = teamCastaway.getDraftedAt();
+        this.placement = null;
         this.castawayPerformance = new CastawayPerformanceDTO(teamCastaway.getCastawayPerformance());
     }
 
