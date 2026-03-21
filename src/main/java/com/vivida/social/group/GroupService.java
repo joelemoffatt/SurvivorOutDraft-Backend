@@ -226,6 +226,7 @@ public class GroupService {
         }
 
         group.setLatestEpisodeWatched(episode);
+        applyStatusFromLatestWatchedEpisode(group, episode);
         Group updated = groupRepository.save(group);
         scoreProjectionService.recalculateGroupScores(updated);
         return updated;
@@ -299,6 +300,7 @@ public class GroupService {
         group.setSeason(season);
         group.setTeamSize(request.getTeamSize());
         group.setLatestEpisodeWatched(latestWatchedEpisode);
+        applyStatusFromLatestWatchedEpisode(group, latestWatchedEpisode);
         group.setFirstScoringEpisodeNumber(firstScoringEpisodeNumber);
 
         Group updated = groupRepository.save(group);
@@ -318,6 +320,18 @@ public class GroupService {
 
         scoreProjectionService.recalculateGroupScores(updated);
         return updated;
+    }
+
+    private void applyStatusFromLatestWatchedEpisode(Group group, Episode latestWatchedEpisode) {
+        if (latestWatchedEpisode == null) {
+            return;
+        }
+
+        if (Boolean.TRUE.equals(latestWatchedEpisode.getIsFinale())) {
+            group.setStatus(GroupStatus.COMPLETED);
+        } else {
+            group.setStatus(GroupStatus.ACTIVE);
+        }
     }
 
     @Transactional

@@ -23,10 +23,10 @@ import org.springframework.web.server.ResponseStatusException;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -170,6 +170,7 @@ public class DraftService {
             dp.setTeam(team);
             dp.setDraftPosition(i);
             dp.setPicksMade(0);
+            dp.setMaxDraftsPerCastaway(1);
             dp.setActive(true);
             participants.add(dp);
         }
@@ -183,13 +184,6 @@ public class DraftService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "No available castaways remain after applying watched-episode boots");
         }
-
-        validateDraftConfigurationAgainstDeadlock(
-            participants.size(),
-            draft.getTeamSize(),
-            allCastaways.size(),
-            draft.getStyle()
-        );
 
         List<DraftCastaway> draftCastaways = allCastaways.stream()
             .map(castawayPerformance -> {
@@ -289,17 +283,32 @@ public class DraftService {
                 "User is not a participant in this draft"));
         Integer teamId = currentParticipant.getTeam().getId();
 
+        Map<Integer, Long> globalDraftCounts = draft.getPicks().stream()
+            .filter(pick -> pick.getCastawayPerformance() != null)
+            .collect(Collectors.groupingBy(
+                pick -> pick.getCastawayPerformance().getId(),
+                Collectors.counting()
+            ));
+
+        Set<Integer> draftedByCurrentTeam = draft.getPicks().stream()
+            .filter(pick -> pick.getCastawayPerformance() != null)
+            .filter(pick -> pick.getTeam() != null && teamId.equals(pick.getTeam().getId()))
+            .map(pick -> pick.getCastawayPerformance().getId())
+            .collect(Collectors.toSet());
+
+        int effectiveCap = ensureTeamCapCanDraft(draft, currentParticipant, globalDraftCounts, draftedByCurrentTeam);
+
         if (pickRepository.existsByDraftIdAndTeamIdAndCastawayPerformanceId(draftId, teamId, castawayPerformanceId)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                 "Your team has already drafted this castaway");
         }
 
-        // Guard: castaway has reached the global draft cap
-        long timesDrafted = pickRepository.countByDraftIdAndCastawayPerformanceId(draftId, castawayPerformanceId);
-        if (timesDrafted >= draft.getMaxDraftsPerCastaway()) {
+        // Guard: castaway has reached this team's current cap
+        long timesDrafted = globalDraftCounts.getOrDefault(castawayPerformanceId, 0L);
+        if (timesDrafted >= effectiveCap) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                "This castaway has already been drafted the maximum number of times (" +
-                    draft.getMaxDraftsPerCastaway() + ")");
+            "This castaway has already been drafted the maximum number of times your team can currently pick (" +
+                effectiveCap + ")");
         }
 
         // Fill in the current pick slot
@@ -316,16 +325,14 @@ public class DraftService {
         currentParticipant.setPicksMade(currentParticipant.getPicksMade() + 1);
         participantRepository.save(currentParticipant);
 
+        // After the full castaway pool has been drafted once more globally,
+        // raise every participant's cap by one.
+        long totalFilledPicks = pickRepository.countByDraftIdAndCastawayPerformanceIsNotNull(draftId);
+        maybeAdvanceAllParticipantCapsAfterCastawayCycle(draft, totalFilledPicks);
+
         // Advance pick number
         int nextPickNumber = draft.getCurrentPickNumber() + 1;
         draft.setCurrentPickNumber(nextPickNumber);
-        // Maybe increment the per-castaway cap:
-        // once every castaway has been drafted maxDraftsPerCastaway times, raise the cap by 1
-        long totalFilledPicks = pickRepository.countByDraftIdAndCastawayPerformanceIsNotNull(draftId);
-        if (draft.getTotalCastaways() > 0 && totalFilledPicks % draft.getTotalCastaways() == 0) {
-            draft.setMaxDraftsPerCastaway(draft.getMaxDraftsPerCastaway() + 1);
-        }
-
 
         if (nextPickNumber > draft.getTotalPicks()) {
             // All slots filled → auto-complete
@@ -466,82 +473,71 @@ public class DraftService {
         }
     }
 
-    /**
-     * Reject draft setups that can strand a player with no legal pick.
-     *
-     * Worst-case model:
-     * - a player's own prior picks permanently remove those castaways from their future options
-     * - other players' picks in the current global cap cycle can consume distinct castaways the player
-     *   has not drafted yet
-     *
-     * If, at any scheduled pick slot, the remaining guaranteed options drop to 0, that slot can deadlock.
-     */
-    private void validateDraftConfigurationAgainstDeadlock(int totalParticipants,
-                                                           int teamSize,
-                                                           int totalCastaways,
-                                                           DraftStyle style) {
-        if (isDeadlockSafe(totalParticipants, teamSize, totalCastaways, style)) {
+    private int ensureTeamCapCanDraft(Draft draft,
+                                      DraftParticipant participant,
+                                      Map<Integer, Long> globalDraftCounts,
+                                      Set<Integer> draftedByTeam) {
+        int cap = participant.getMaxDraftsPerCastaway() != null
+                ? participant.getMaxDraftsPerCastaway()
+                : 1;
+        int maxMeaningfulCap = Math.max(1, draft.getTotalParticipants());
+
+        while (countDraftableCastaways(draft, globalDraftCounts, draftedByTeam, cap) == 0
+                && cap < maxMeaningfulCap) {
+            cap++;
+        }
+
+        if (cap != participant.getMaxDraftsPerCastaway()) {
+            participant.setMaxDraftsPerCastaway(cap);
+            participantRepository.save(participant);
+        }
+
+        return cap;
+    }
+
+    private int countDraftableCastaways(Draft draft,
+                                        Map<Integer, Long> globalDraftCounts,
+                                        Set<Integer> draftedByTeam,
+                                        int cap) {
+        int count = 0;
+        for (DraftCastaway draftCastaway : draft.getDraftCastaways()) {
+            Integer castawayPerformanceId = draftCastaway.getCastawayPerformance().getId();
+            if (draftedByTeam.contains(castawayPerformanceId)) {
+                continue;
+            }
+            long timesDrafted = globalDraftCounts.getOrDefault(castawayPerformanceId, 0L);
+            if (timesDrafted < cap) {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    private void maybeAdvanceAllParticipantCapsAfterCastawayCycle(Draft draft,
+                                                                   long totalFilledPicks) {
+        if (draft.getTotalCastaways() == null || draft.getTotalCastaways() <= 0) {
             return;
         }
 
-        int minimumSafeCastaways = findMinimumSafeCastaways(totalParticipants, teamSize, style);
-        throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                "Unsafe draft configuration: " + totalParticipants + " participants with team size " +
-                        teamSize + " and only " + totalCastaways + " available castaways can leave a player " +
-                        "with no legal pick. Need at least " + minimumSafeCastaways +
-                        " available castaways for a guaranteed deadlock-free " + style + " draft.");
-    }
-
-    private boolean isDeadlockSafe(int totalParticipants,
-                                   int teamSize,
-                                   int totalCastaways,
-                                   DraftStyle style) {
-        if (totalParticipants <= 0 || teamSize <= 0 || totalCastaways <= 0) {
-            return false;
+        if (totalFilledPicks <= 0 || totalFilledPicks % draft.getTotalCastaways() != 0) {
+            return;
         }
 
-        if (totalCastaways < teamSize) {
-            return false;
+        int currentGlobalCap = draft.getMaxDraftsPerCastaway() != null
+                ? draft.getMaxDraftsPerCastaway()
+                : 1;
+        draft.setMaxDraftsPerCastaway(currentGlobalCap + 1);
+
+        List<DraftParticipant> updatedParticipants = new ArrayList<>();
+        for (DraftParticipant participant : draft.getParticipants()) {
+            int currentCap = participant.getMaxDraftsPerCastaway() != null
+                    ? participant.getMaxDraftsPerCastaway()
+                    : 1;
+            participant.setMaxDraftsPerCastaway(currentCap + 1);
+            updatedParticipants.add(participant);
         }
 
-        int totalPicks = totalParticipants * teamSize;
-        int[] picksMadeByPosition = new int[totalParticipants];
-        int[] picksMadeByPositionThisCycle = new int[totalParticipants];
-
-        for (int pickNumber = 1; pickNumber <= totalPicks; pickNumber++) {
-            int position = calculatePosition(pickNumber, totalParticipants, style);
-            int picksBeforeThisTurnInCycle = (pickNumber - 1) % totalCastaways;
-            int otherPlayersPicksThisCycle = picksBeforeThisTurnInCycle - picksMadeByPositionThisCycle[position];
-            int guaranteedOptionsRemaining = totalCastaways
-                    - picksMadeByPosition[position]
-                    - otherPlayersPicksThisCycle;
-
-            if (guaranteedOptionsRemaining <= 0) {
-                return false;
-            }
-
-            picksMadeByPosition[position]++;
-            picksMadeByPositionThisCycle[position]++;
-
-            if (pickNumber % totalCastaways == 0) {
-                Arrays.fill(picksMadeByPositionThisCycle, 0);
-            }
-        }
-
-        return true;
-    }
-
-    private int findMinimumSafeCastaways(int totalParticipants,
-                                         int teamSize,
-                                         DraftStyle style) {
-        int totalPicks = totalParticipants * teamSize;
-        int candidate = Math.max(teamSize, 1);
-
-        while (candidate <= totalPicks && !isDeadlockSafe(totalParticipants, teamSize, candidate, style)) {
-            candidate++;
-        }
-
-        return candidate;
+        participantRepository.saveAll(updatedParticipants);
     }
 
     /**

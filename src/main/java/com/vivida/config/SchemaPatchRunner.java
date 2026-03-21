@@ -105,19 +105,23 @@ public class SchemaPatchRunner {
     private void patchDraftParticipantsTable() {
         safeExecute("ALTER TABLE IF EXISTS draft_participants ADD COLUMN IF NOT EXISTS draft_position INTEGER");
         safeExecute("ALTER TABLE IF EXISTS draft_participants ADD COLUMN IF NOT EXISTS picks_made INTEGER");
+        safeExecute("ALTER TABLE IF EXISTS draft_participants ADD COLUMN IF NOT EXISTS max_drafts_per_castaway INTEGER");
         safeExecute("ALTER TABLE IF EXISTS draft_participants ADD COLUMN IF NOT EXISTS active BOOLEAN");
         safeExecute("ALTER TABLE IF EXISTS draft_participants ADD COLUMN IF NOT EXISTS created_at TIMESTAMP");
         safeExecute("ALTER TABLE IF EXISTS draft_participants ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP");
 
         safeExecute("UPDATE draft_participants SET picks_made = 0 WHERE picks_made IS NULL");
+        safeExecute("UPDATE draft_participants SET max_drafts_per_castaway = 1 WHERE max_drafts_per_castaway IS NULL");
         safeExecute("UPDATE draft_participants SET active = TRUE WHERE active IS NULL");
         safeExecute("UPDATE draft_participants SET created_at = NOW() WHERE created_at IS NULL");
         safeExecute("UPDATE draft_participants SET updated_at = NOW() WHERE updated_at IS NULL");
 
         safeExecute("ALTER TABLE IF EXISTS draft_participants ALTER COLUMN picks_made SET DEFAULT 0");
+        safeExecute("ALTER TABLE IF EXISTS draft_participants ALTER COLUMN max_drafts_per_castaway SET DEFAULT 1");
         safeExecute("ALTER TABLE IF EXISTS draft_participants ALTER COLUMN active SET DEFAULT TRUE");
 
         safeExecute("ALTER TABLE IF EXISTS draft_participants ALTER COLUMN picks_made SET NOT NULL");
+        safeExecute("ALTER TABLE IF EXISTS draft_participants ALTER COLUMN max_drafts_per_castaway SET NOT NULL");
         safeExecute("ALTER TABLE IF EXISTS draft_participants ALTER COLUMN active SET NOT NULL");
         safeExecute("ALTER TABLE IF EXISTS draft_participants ALTER COLUMN created_at SET NOT NULL");
         safeExecute("ALTER TABLE IF EXISTS draft_participants ALTER COLUMN updated_at SET NOT NULL");

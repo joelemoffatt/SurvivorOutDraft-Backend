@@ -47,6 +47,13 @@ public class DraftParticipant {
     @Column(nullable = false)
     private Integer picksMade;
 
+    /**
+     * Team-specific cap used to determine whether this team can draft a castaway
+     * based on how many times that castaway has already been drafted globally.
+     */
+    @Column(nullable = false)
+    private Integer maxDraftsPerCastaway;
+
     @Column(nullable = false)
     private Boolean active;
 
@@ -63,6 +70,9 @@ public class DraftParticipant {
         updatedAt = now;
         if (picksMade == null) {
             picksMade = 0;
+        }
+        if (maxDraftsPerCastaway == null) {
+            maxDraftsPerCastaway = 1;
         }
         if (active == null) {
             active = true;

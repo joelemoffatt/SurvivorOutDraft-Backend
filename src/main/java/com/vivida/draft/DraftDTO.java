@@ -107,6 +107,7 @@ public class DraftDTO {
         public Integer teamId;
         public String teamName;
         public Integer picksMade;
+        public Integer maxDraftsPerCastaway;
         public boolean active;
 
         public ParticipantDTO(DraftParticipant dp) {
@@ -118,6 +119,7 @@ public class DraftDTO {
                 this.teamName = dp.getTeam().getTeamName();
             }
             this.picksMade = dp.getPicksMade();
+            this.maxDraftsPerCastaway = dp.getMaxDraftsPerCastaway();
             this.active = Boolean.TRUE.equals(dp.getActive());
         }
     }
