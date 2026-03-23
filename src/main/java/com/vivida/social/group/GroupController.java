@@ -132,6 +132,15 @@ public class GroupController {
             }
         }
 
+            Integer latestWatchedEpisodeNumber = latestWatchedEpisode != null
+                ? latestWatchedEpisode.getEpisodeNumber()
+                : null;
+            groupService.validateTeamSizeWithinAvailableCastaways(
+                request.getTeamSize(),
+                season.getSeason(),
+                latestWatchedEpisodeNumber
+            );
+
         // Create Group entity
         Group group = new Group();
         group.setName(request.getName().trim());

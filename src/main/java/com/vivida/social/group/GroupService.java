@@ -8,6 +8,8 @@ import org.springframework.transaction.annotation.Transactional;
 import com.vivida.draft.DraftStatus;
 import com.vivida.draft.DraftRepository;
 import com.vivida.draft.DraftStyle;
+import com.vivida.game.boot.BootRepository;
+import com.vivida.game.castaway.CastawayPerformanceRepository;
 import com.vivida.game.episode.Episode;
 import com.vivida.game.episode.EpisodeRepository;
 import com.vivida.game.season.Season;
@@ -31,6 +33,8 @@ public class GroupService {
     private final GroupRepository groupRepository;
     private final GroupMemberRepository groupMemberRepository;
     private final TeamRepository teamRepository;
+    private final CastawayPerformanceRepository castawayPerformanceRepository;
+    private final BootRepository bootRepository;
     private final EpisodeRepository episodeRepository;
     private final SeasonRepository seasonRepository;
     private final DraftRepository draftRepository;
@@ -41,6 +45,8 @@ public class GroupService {
     public GroupService(GroupRepository groupRepository,
                         GroupMemberRepository groupMemberRepository,
                         TeamRepository teamRepository,
+                        CastawayPerformanceRepository castawayPerformanceRepository,
+                        BootRepository bootRepository,
                         EpisodeRepository episodeRepository,
                         SeasonRepository seasonRepository,
                         DraftRepository draftRepository,
@@ -50,6 +56,8 @@ public class GroupService {
         this.groupRepository = groupRepository;
         this.groupMemberRepository = groupMemberRepository;
         this.teamRepository = teamRepository;
+        this.castawayPerformanceRepository = castawayPerformanceRepository;
+        this.bootRepository = bootRepository;
         this.episodeRepository = episodeRepository;
         this.seasonRepository = seasonRepository;
         this.draftRepository = draftRepository;
@@ -204,6 +212,14 @@ public class GroupService {
     }
 
     public void updateGroup(Group group) {
+        if (group == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Group is required");
+        }
+        Integer seasonId = group != null && group.getSeason() != null ? group.getSeason().getSeason() : null;
+        Integer latestWatchedEpisodeNumber = group != null && group.getLatestEpisodeWatched() != null
+                ? group.getLatestEpisodeWatched().getEpisodeNumber()
+                : null;
+        validateTeamSizeWithinAvailableCastaways(group.getTeamSize(), seasonId, latestWatchedEpisodeNumber);
         groupRepository.save(group);
     }
 
@@ -296,6 +312,15 @@ public class GroupService {
             }
         }
 
+            Integer latestWatchedEpisodeNumber = latestWatchedEpisode != null
+                ? latestWatchedEpisode.getEpisodeNumber()
+                : null;
+            validateTeamSizeWithinAvailableCastaways(
+                request.getTeamSize(),
+                season.getSeason(),
+                latestWatchedEpisodeNumber
+            );
+
         group.setName(request.getName().trim());
         group.setSeason(season);
         group.setTeamSize(request.getTeamSize());
@@ -320,6 +345,30 @@ public class GroupService {
 
         scoreProjectionService.recalculateGroupScores(updated);
         return updated;
+    }
+
+    public void validateTeamSizeWithinAvailableCastaways(Integer teamSize,
+                                                         Integer seasonId,
+                                                         Integer latestWatchedEpisodeNumber) {
+        if (teamSize == null || teamSize <= 0) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Team size must be a positive integer");
+        }
+        if (seasonId == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Season is required");
+        }
+
+        int totalCastaways = (int) castawayPerformanceRepository.countBySeasonId(seasonId);
+        int bootedCastaways = latestWatchedEpisodeNumber == null
+                ? 0
+                : bootRepository.findBySeasonIdAndEpisodeNumberLessThanEqual(seasonId, latestWatchedEpisodeNumber).size();
+        int availableCastaways = Math.max(totalCastaways - bootedCastaways, 0);
+
+        if (teamSize > availableCastaways) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Team size cannot exceed available castaways (" + availableCastaways + ")"
+            );
+        }
     }
 
     private void applyStatusFromLatestWatchedEpisode(Group group, Episode latestWatchedEpisode) {
