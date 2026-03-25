@@ -59,6 +59,7 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/api/v1/challenges/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/v1/votes/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/v1/castaways/**").permitAll()
+                    .requestMatchers(HttpMethod.GET, "/api/v1/users/*/avatar").permitAll()
                         .anyRequest().authenticated()
                 )
                 .sessionManagement(session -> session

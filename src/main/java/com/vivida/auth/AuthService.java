@@ -16,6 +16,7 @@ public class AuthService {
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
     private final AuthenticationManager authenticationManager;
+    private final UserService userService;
 
     public AuthResponse register(RegisterRequest request) {
         // Check if username already exists
@@ -41,7 +42,16 @@ public class AuthService {
         // Generate JWT token
         String jwtToken = jwtService.generateToken(user);
 
-        return new AuthResponse(user.getId(), jwtToken, user.getUsername(), user.getEmail(), user.getRole());
+        return new AuthResponse(
+            user.getId(),
+            jwtToken,
+            user.getUsername(),
+            user.getEmail(),
+            user.getRole(),
+            userService.getAvatarImageUrl(user.getId()),
+            user.getFavoriteCastaways(),
+            user.getBio()
+        );
     }
 
     public AuthResponse login(LoginRequest request) {
@@ -60,6 +70,15 @@ public class AuthService {
         // Generate JWT token
         String jwtToken = jwtService.generateToken(user);
 
-        return new AuthResponse(user.getId(), jwtToken, user.getUsername(), user.getEmail(), user.getRole());
+        return new AuthResponse(
+            user.getId(),
+            jwtToken,
+            user.getUsername(),
+            user.getEmail(),
+            user.getRole(),
+            userService.getAvatarImageUrl(user.getId()),
+            user.getFavoriteCastaways(),
+            user.getBio()
+        );
     }
 }

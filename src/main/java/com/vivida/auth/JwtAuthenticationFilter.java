@@ -1,5 +1,6 @@
 package com.vivida.auth;
 
+import io.jsonwebtoken.JwtException;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -10,6 +11,7 @@ import org.springframework.security.authentication.UsernamePasswordAuthenticatio
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.core.userdetails.UserDetailsService;
+import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.security.web.authentication.WebAuthenticationDetailsSource;
 import org.springframework.web.filter.OncePerRequestFilter;
 
@@ -42,6 +44,11 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         }
 
         jwt = authHeader.substring(7);
+        if (jwt.isBlank()) {
+            log.debug("Bearer token was blank, continuing as unauthenticated");
+            filterChain.doFilter(request, response);
+            return;
+        }
         log.debug("Extracted JWT token (first 20 chars): {}", jwt.substring(0, Math.min(20, jwt.length())));
 
         try {
@@ -67,8 +74,16 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                     log.warn("Token validation failed for user: {}", username);
                 }
             }
+        } catch (UsernameNotFoundException e) {
+            // Common stale-token case: token subject user was deleted/renamed.
+            SecurityContextHolder.clearContext();
+            log.info("JWT subject no longer exists; continuing as unauthenticated");
+        } catch (JwtException | IllegalArgumentException e) {
+            SecurityContextHolder.clearContext();
+            log.debug("Invalid JWT token; continuing as unauthenticated: {}", e.getMessage());
         } catch (Exception e) {
-            log.error("Error in JWT filter", e);
+            SecurityContextHolder.clearContext();
+            log.error("Unexpected error in JWT filter", e);
         }
 
         filterChain.doFilter(request, response);

@@ -9,6 +9,7 @@ import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.userdetails.UserDetails;
 
+import com.vivida.game.castaway.Castaway;
 import com.vivida.social.group.Group;
 import com.vivida.social.group.GroupMember;
 import com.vivida.social.team.Team;
@@ -44,6 +45,20 @@ public class User implements UserDetails {
 
     @Column(nullable = false)
     private Boolean enabled = true;
+
+    @Column(length = 500)
+    private String avatarImage;
+
+        @ManyToMany(fetch = FetchType.EAGER)
+        @JoinTable(
+            name = "user_favorite_castaways",
+            joinColumns = @JoinColumn(name = "user_id"),
+            inverseJoinColumns = @JoinColumn(name = "castaway_id")
+        )
+        private List<Castaway> favoriteCastaways;
+
+    @Column(length = 1000)
+    private String bio;
 
     @Column(nullable = false)
     private LocalDateTime createdAt;

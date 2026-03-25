@@ -336,6 +336,23 @@ public class DataLoader implements CommandLineRunner {
         System.out.println("✓ Saved " + entities.size() + " " + entityName + "\n");
     }
 
+    private User getOrCreateSeedUser(String username, String email, Role defaultRole) {
+        User user = userRepository.findByUsername(username)
+                .orElseGet(() -> userRepository.findByEmail(email).orElse(null));
+
+        if (user != null) {
+            return user;
+        }
+
+        User created = new User();
+        created.setUsername(username);
+        created.setEmail(email);
+        created.setPassword(passwordEncoder.encode("123"));
+        created.setRole(defaultRole);
+        created.setEnabled(true);
+        return userRepository.save(created);
+    }
+
     private void loadSeasons() throws Exception {
         List<Map<String, Object>> data = loadJsonFile("season.json");
         if (data.isEmpty()) return;
@@ -1094,16 +1111,7 @@ public class DataLoader implements CommandLineRunner {
 
         List<User> users = new ArrayList<>();
         for (String username : usernames) {
-            User user = userRepository.findByUsername(username).orElse(null);
-            if (user == null) {
-                user = new User();
-                user.setUsername(username);
-                user.setEmail(username + "@example.com");
-                user.setPassword(passwordEncoder.encode("123"));
-                user.setRole(Role.USER);
-                user.setEnabled(true);
-                userRepository.save(user);
-            }
+            User user = getOrCreateSeedUser(username, username + "@example.com", Role.USER);
             users.add(user);
         }
 
@@ -1190,16 +1198,7 @@ public class DataLoader implements CommandLineRunner {
         // Create/fetch users
         List<User> users = new ArrayList<>();
         for (String username : userRosters.keySet()) {
-            User user = userRepository.findByUsername(username).orElse(null);
-            if (user == null) {
-                user = new User();
-                user.setUsername(username);
-                user.setEmail(username + "@example.com");
-                user.setPassword(passwordEncoder.encode("123"));
-                user.setRole(Role.USER);
-                user.setEnabled(true);
-                userRepository.save(user);
-            }
+            User user = getOrCreateSeedUser(username, username + "@example.com", Role.USER);
             users.add(user);
         }
 
@@ -1301,16 +1300,11 @@ public class DataLoader implements CommandLineRunner {
         List<String> colorNames = Arrays.asList("red", "yellow", "blue", "green");
         List<User> users = new ArrayList<>();
         for (String colorName : colorNames) {
-            User user = userRepository.findByUsername(colorName).orElse(null);
-            if (user == null) {
-                user = new User();
-                user.setUsername(colorName);
-                user.setEmail(colorName + "@example.com");
-                user.setPassword(passwordEncoder.encode("123"));
-                user.setRole(colorName.equals("blue") ? Role.ADMIN : Role.USER);
-                user.setEnabled(true);
-                userRepository.save(user);
-            }
+            User user = getOrCreateSeedUser(
+                    colorName,
+                    colorName + "@example.com",
+                    colorName.equals("blue") ? Role.ADMIN : Role.USER
+            );
             users.add(user);
         }
 
@@ -1594,16 +1588,7 @@ public class DataLoader implements CommandLineRunner {
         String[] usernames = {"joel", "jess", "mckenna", "kc", "kaitlin", "devin"};
         for (String username : usernames) {
             String email = username + "@example.com";
-            User user = userRepository.findByUsername(username).orElse(null);
-            if (user == null) {
-                user = new User();
-                user.setUsername(username);
-                user.setEmail(email);
-                user.setPassword(passwordEncoder.encode("123"));
-                user.setRole(username.equals("joel") ? Role.ADMIN : Role.USER);
-                user.setEnabled(true);
-                userRepository.save(user);
-            }
+            User user = getOrCreateSeedUser(username, email, username.equals("joel") ? Role.ADMIN : Role.USER);
             users.add(user);
         }
 

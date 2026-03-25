@@ -1,9 +1,12 @@
 package com.vivida.auth;
 
+import com.vivida.game.castaway.Castaway;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+
+import java.util.List;
 
 @Getter
 @Setter
@@ -15,4 +18,7 @@ public class AuthResponse {
     private String username;
     private String email;
     private Role role;
+    private String avatarImage;
+    private List<Castaway> favoriteCastaways;
+    private String bio;
 }
