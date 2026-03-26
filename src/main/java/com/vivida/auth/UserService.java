@@ -135,6 +135,7 @@ public class UserService {
         userRepository.save(existingUser);
     }
 
+    @Transactional
     public void uploadAvatar(int userId, User requestingUser, MultipartFile avatarFile) {
         if (avatarFile == null || avatarFile.isEmpty()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Avatar file is required");
@@ -176,16 +177,14 @@ public class UserService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Avatar not found"));
     }
 
+    @Transactional
     public void deleteAvatar(int userId, User requestingUser) {
         if (!requestingUser.getId().equals(userId) && requestingUser.getRole() != Role.ADMIN) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "You can only delete your own avatar");
         }
 
-        if (!userAvatarRepository.existsByUserId(userId)) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Avatar not found");
-        }
-
-        UserAvatar avatar = getAvatarByUserId(userId);
+        UserAvatar avatar = userAvatarRepository.findByUserId(userId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Avatar not found"));
         userAvatarRepository.delete(avatar);
     }
 
