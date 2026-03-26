@@ -1,5 +1,7 @@
 package com.vivida.social.team;
 
+import com.vivida.auth.Role;
+import com.vivida.auth.User;
 import com.vivida.game.boot.Boot;
 import com.vivida.game.boot.BootRepository;
 import com.vivida.scoring.ScoreBreakdownDTO;
@@ -7,13 +9,17 @@ import com.vivida.scoring.TeamCastawayScoreEvent;
 import com.vivida.scoring.TeamCastawayScoreEventRepository;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.io.IOException;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 
 @Service
 public class TeamService {
@@ -22,16 +28,27 @@ public class TeamService {
     private final TeamCastawayRepository teamCastawayRepository;
     private final TeamCastawayScoreEventRepository scoreEventRepository;
     private final BootRepository bootRepository;
+        private final TeamAvatarRepository teamAvatarRepository;
+
+        private static final long MAX_AVATAR_FILE_SIZE_BYTES = 5L * 1024L * 1024L;
+        private static final Set<String> ALLOWED_AVATAR_CONTENT_TYPES = Set.of(
+            "image/jpeg",
+            "image/png",
+            "image/webp",
+            "image/gif"
+        );
 
     public TeamService(
             TeamRepository teamRepository,
             TeamCastawayRepository teamCastawayRepository,
             TeamCastawayScoreEventRepository scoreEventRepository,
-            BootRepository bootRepository) {
+            BootRepository bootRepository,
+            TeamAvatarRepository teamAvatarRepository) {
         this.teamRepository = teamRepository;
         this.teamCastawayRepository = teamCastawayRepository;
         this.scoreEventRepository = scoreEventRepository;
         this.bootRepository = bootRepository;
+        this.teamAvatarRepository = teamAvatarRepository;
     }
 
     public List<Team> getAllTeams() {
@@ -86,7 +103,7 @@ public class TeamService {
 
     public TeamDTO getTeamDtoById(int id) {
         Team team = getTeamById(id);
-        TeamDTO dto = new TeamDTO(team);
+        TeamDTO dto = toTeamDTO(team);
         populateRosterPlacement(team, dto);
         return dto;
     }
@@ -94,7 +111,7 @@ public class TeamService {
     public List<TeamDTO> getTeamDtosByGroupId(int groupId) {
         return getTeamsByGroupId(groupId).stream()
                 .map(team -> {
-                    TeamDTO dto = new TeamDTO(team);
+                    TeamDTO dto = toTeamDTO(team);
                     populateRosterPlacement(team, dto);
                     return dto;
                 })
@@ -104,7 +121,7 @@ public class TeamService {
     public List<TeamDTO> getTeamDtosByUserId(int userId) {
         return getTeamsByUserId(userId).stream()
                 .map(team -> {
-                    TeamDTO dto = new TeamDTO(team);
+                    TeamDTO dto = toTeamDTO(team);
                     populateRosterPlacement(team, dto);
                     return dto;
                 })
@@ -113,7 +130,7 @@ public class TeamService {
 
     public TeamDTO getTeamDtoByGroupAndUser(int groupId, int userId) {
         Team team = getTeamByGroupAndUser(groupId, userId);
-        TeamDTO dto = new TeamDTO(team);
+        TeamDTO dto = toTeamDTO(team);
         populateRosterPlacement(team, dto);
         return dto;
     }
@@ -121,11 +138,99 @@ public class TeamService {
     public List<TeamDTO> getAllTeamDtos() {
         return getAllTeams().stream()
                 .map(team -> {
-                    TeamDTO dto = new TeamDTO(team);
+                    TeamDTO dto = toTeamDTO(team);
                     populateRosterPlacement(team, dto);
                     return dto;
                 })
                 .toList();
+    }
+
+    @Transactional
+    public TeamDTO updateTeamProfile(int teamId, User requestingUser, String teamName, MultipartFile avatarFile) {
+        Team team = getTeamById(teamId);
+
+        if (!team.getUser().getId().equals(requestingUser.getId()) && requestingUser.getRole() != Role.ADMIN) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "You can only update your own team");
+        }
+
+        boolean hasTeamNameUpdate = teamName != null;
+        boolean hasAvatarUpdate = avatarFile != null && !avatarFile.isEmpty();
+        if (!hasTeamNameUpdate && !hasAvatarUpdate) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Provide a teamName or avatar file to update");
+        }
+
+        if (hasTeamNameUpdate) {
+            String normalizedTeamName = teamName.trim();
+            if (normalizedTeamName.isBlank()) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Team name cannot be blank");
+            }
+            if (normalizedTeamName.length() > 100) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Team name must be 100 characters or fewer");
+            }
+            team.setTeamName(normalizedTeamName);
+            teamRepository.save(team);
+        }
+
+        if (hasAvatarUpdate) {
+            upsertTeamAvatar(team, avatarFile);
+        }
+
+        return getTeamDtoById(teamId);
+    }
+
+    @Transactional(readOnly = true)
+    public TeamAvatar getAvatarByTeamId(int teamId) {
+        return teamAvatarRepository.findByTeamId(teamId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Avatar not found"));
+    }
+
+    @Transactional
+    public void deleteAvatar(int teamId, User requestingUser) {
+        Team team = getTeamById(teamId);
+        if (!team.getUser().getId().equals(requestingUser.getId()) && requestingUser.getRole() != Role.ADMIN) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "You can only delete your own team avatar");
+        }
+
+        TeamAvatar avatar = teamAvatarRepository.findByTeamId(teamId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Avatar not found"));
+        teamAvatarRepository.delete(avatar);
+    }
+
+    public String getAvatarImageUrl(Integer teamId) {
+        if (teamId == null || !teamAvatarRepository.existsByTeamId(teamId)) {
+            return null;
+        }
+        return TeamAvatarImageUrlResolver.buildAvatarUrl(teamId);
+    }
+
+    private void upsertTeamAvatar(Team team, MultipartFile avatarFile) {
+        if (avatarFile.getSize() > MAX_AVATAR_FILE_SIZE_BYTES) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Avatar file size must be 5MB or less");
+        }
+
+        String contentType = avatarFile.getContentType();
+        if (contentType == null || !ALLOWED_AVATAR_CONTENT_TYPES.contains(contentType.toLowerCase(Locale.ROOT))) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Only JPG, PNG, WEBP, and GIF avatars are supported");
+        }
+
+        TeamAvatar avatar = teamAvatarRepository.findByTeamId(team.getId())
+                .orElseGet(() -> {
+                    TeamAvatar created = new TeamAvatar();
+                    created.setTeam(team);
+                    return created;
+                });
+
+        try {
+            avatar.setImageData(avatarFile.getBytes());
+            avatar.setContentType(contentType);
+            teamAvatarRepository.save(avatar);
+        } catch (IOException ex) {
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to read avatar upload", ex);
+        }
+    }
+
+    private TeamDTO toTeamDTO(Team team) {
+        return new TeamDTO(team, getAvatarImageUrl(team.getId()));
     }
 
     private void populateRosterPlacement(Team team, TeamDTO dto) {

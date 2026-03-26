@@ -1,7 +1,12 @@
 package com.vivida.social.team;
 
+import com.vivida.auth.User;
 import com.vivida.scoring.ScoreBreakdownDTO;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
 
@@ -55,6 +60,36 @@ public class TeamController {
     @PutMapping
     public void updateTeam(@RequestBody Team team) {
         teamService.updateTeam(team);
+    }
+
+    @PutMapping(value = "{id}/profile", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public TeamDTO updateTeamProfile(
+            @PathVariable Integer id,
+            @RequestPart(value = "teamName", required = false) String teamName,
+            @RequestPart(value = "file", required = false) MultipartFile file,
+            Authentication authentication) {
+        User requestingUser = (User) authentication.getPrincipal();
+        return teamService.updateTeamProfile(id, requestingUser, teamName, file);
+    }
+
+    @GetMapping("{id}/avatar")
+    public ResponseEntity<byte[]> downloadAvatar(@PathVariable Integer id) {
+        TeamAvatar avatar = teamService.getAvatarByTeamId(id);
+        MediaType mediaType = MediaType.APPLICATION_OCTET_STREAM;
+        String contentType = avatar.getContentType();
+        if (contentType != null) {
+            mediaType = MediaType.parseMediaType(contentType);
+        }
+
+        return ResponseEntity.ok()
+                .contentType(mediaType)
+                .body(avatar.getImageData());
+    }
+
+    @DeleteMapping("{id}/avatar")
+    public void deleteAvatar(@PathVariable Integer id, Authentication authentication) {
+        User requestingUser = (User) authentication.getPrincipal();
+        teamService.deleteAvatar(id, requestingUser);
     }
 
     @PostMapping("{id}/recalculate-points")

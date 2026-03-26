@@ -10,13 +10,15 @@ import java.util.stream.Collectors;
 public class TeamDTO {
     public Integer id;
     public String teamName;
+    public String avatarImage;
     public Integer totalPoints;
     public LocalDateTime createdAt;
     public List<TeamCastawayDTO> roster;
 
-    public TeamDTO(Team team) {
+    public TeamDTO(Team team, String avatarImage) {
         this.id = team.getId();
         this.teamName = team.getTeamName();
+        this.avatarImage = avatarImage;
         this.totalPoints = team.getTotalPoints();
         this.createdAt = team.getCreatedAt();
         this.roster = team.getRoster() != null 

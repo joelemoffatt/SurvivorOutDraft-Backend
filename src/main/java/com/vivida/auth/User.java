@@ -49,13 +49,13 @@ public class User implements UserDetails {
     @Column(length = 500)
     private String avatarImage;
 
-        @ManyToMany(fetch = FetchType.EAGER)
-        @JoinTable(
-            name = "user_favorite_castaways",
-            joinColumns = @JoinColumn(name = "user_id"),
-            inverseJoinColumns = @JoinColumn(name = "castaway_id")
-        )
-        private List<Castaway> favoriteCastaways;
+    @ManyToMany(fetch = FetchType.EAGER)
+    @JoinTable(
+        name = "user_favorite_castaways",
+        joinColumns = @JoinColumn(name = "user_id"),
+        inverseJoinColumns = @JoinColumn(name = "castaway_id")
+    )
+    private List<Castaway> favoriteCastaways;
 
     @Column(length = 1000)
     private String bio;
