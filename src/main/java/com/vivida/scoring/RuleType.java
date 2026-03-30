@@ -2,6 +2,7 @@ package com.vivida.scoring;
 
 public enum RuleType {
     INDIVIDUAL_IMMUNITY,
+    TRIBAL_IMMUNITY,
     FOUND_IDOL,
     FOUND_ADVANTAGE,
     PLAYED_IDOL_SUCCESSFULLY,

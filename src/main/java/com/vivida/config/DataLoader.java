@@ -296,6 +296,8 @@ public class DataLoader implements CommandLineRunner {
         if (loadGameData) {
             // Clear survivor data
             System.out.println("  - Clearing game data (seasons, castaways, episodes, etc.)...");
+            // Clear many-to-many links so castaways can be deleted safely.
+            entityManager.createNativeQuery("DELETE FROM user_favorite_castaways").executeUpdate();
             advantageMovementRepository.deleteAllInBatch();
             bootRepository.deleteAllInBatch();
             journeyRepository.deleteAllInBatch();
@@ -1121,7 +1123,7 @@ public class DataLoader implements CommandLineRunner {
         group.setSeason(season);
         group.setStatus(GroupStatus.PENDING);
         group.setTeamSize(10);
-        Episode latestWatchedEpisode = episodeCache.get(50003);
+        Episode latestWatchedEpisode = episodeCache.get(50004);
         group.setLatestEpisodeWatched(latestWatchedEpisode);
         applyCompletedStatusIfFinale(group, latestWatchedEpisode);
         groupRepository.save(group);
@@ -1173,7 +1175,7 @@ public class DataLoader implements CommandLineRunner {
                 } else if (seasonNum == 49) {
                     latestWatchedEpisode = episodeCache.get(49013);
                 } else if (seasonNum == 50) {
-                    latestWatchedEpisode = episodeCache.get(50003);
+                    latestWatchedEpisode = episodeCache.get(50004);
                 }
             }
             if (latestWatchedEpisode != null) {
@@ -1220,7 +1222,7 @@ public class DataLoader implements CommandLineRunner {
             } else if (seasonNum == 49) {
                 latestWatchedEpisode = episodeCache.get(49013);
             } else if (seasonNum == 50) {
-                latestWatchedEpisode = episodeCache.get(50003);
+                latestWatchedEpisode = episodeCache.get(50004);
             }
         }
         group.setLatestEpisodeWatched(latestWatchedEpisode);

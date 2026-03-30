@@ -26,6 +26,7 @@ public class SchemaPatchRunner {
         patchGroupMembersTable();
         patchScoringProjectionColumns();
         patchPointRulesTable();
+        patchTeamCastawayScoreEventsTable();
         patchDraftsTable();
         patchDraftParticipantsTable();
         patchDraftPicksTable();
@@ -71,6 +72,86 @@ public class SchemaPatchRunner {
         safeExecute("ALTER TABLE IF EXISTS point_rules ALTER COLUMN active DROP NOT NULL");
         safeExecute("ALTER TABLE IF EXISTS point_rules ALTER COLUMN active DROP DEFAULT");
         safeExecute("ALTER TABLE IF EXISTS point_rules DROP COLUMN IF EXISTS active");
+
+        // Keep legacy local DBs aligned with RuleType enum values.
+        safeExecute("""
+                DO $$
+                BEGIN
+                    IF EXISTS (
+                        SELECT 1
+                        FROM information_schema.tables
+                        WHERE table_schema = current_schema()
+                          AND table_name = 'point_rules'
+                    ) THEN
+                        UPDATE point_rules
+                        SET rule_type = 'TRIBAL_IMMUNITY'
+                        WHERE rule_type = 'TEAM_IMMUNITY';
+
+                        ALTER TABLE point_rules
+                            DROP CONSTRAINT IF EXISTS point_rules_rule_type_check;
+
+                        ALTER TABLE point_rules
+                            ADD CONSTRAINT point_rules_rule_type_check CHECK (
+                                rule_type IN (
+                                    'INDIVIDUAL_IMMUNITY',
+                                    'TRIBAL_IMMUNITY',
+                                    'FOUND_IDOL',
+                                    'FOUND_ADVANTAGE',
+                                    'PLAYED_IDOL_SUCCESSFULLY',
+                                    'PLAYED_ADVANTAGE_SUCCESSFULLY',
+                                    'SOLE_SURVIVOR',
+                                    'RUNNER_UP',
+                                    'FINAL_THREE_BONUS',
+                                    'MADE_MERGE',
+                                    'MED_EVAC',
+                                    'QUIT'
+                                )
+                            );
+                    END IF;
+                END
+                $$;
+                """);
+    }
+
+    private void patchTeamCastawayScoreEventsTable() {
+        // Keep legacy local DBs aligned with RuleType enum values.
+        safeExecute("""
+                DO $$
+                BEGIN
+                    IF EXISTS (
+                        SELECT 1
+                        FROM information_schema.tables
+                        WHERE table_schema = current_schema()
+                          AND table_name = 'team_castaway_score_events'
+                    ) THEN
+                        UPDATE team_castaway_score_events
+                        SET rule_type = 'TRIBAL_IMMUNITY'
+                        WHERE rule_type = 'TEAM_IMMUNITY';
+
+                        ALTER TABLE team_castaway_score_events
+                            DROP CONSTRAINT IF EXISTS team_castaway_score_events_rule_type_check;
+
+                        ALTER TABLE team_castaway_score_events
+                            ADD CONSTRAINT team_castaway_score_events_rule_type_check CHECK (
+                                rule_type IN (
+                                    'INDIVIDUAL_IMMUNITY',
+                                    'TRIBAL_IMMUNITY',
+                                    'FOUND_IDOL',
+                                    'FOUND_ADVANTAGE',
+                                    'PLAYED_IDOL_SUCCESSFULLY',
+                                    'PLAYED_ADVANTAGE_SUCCESSFULLY',
+                                    'SOLE_SURVIVOR',
+                                    'RUNNER_UP',
+                                    'FINAL_THREE_BONUS',
+                                    'MADE_MERGE',
+                                    'MED_EVAC',
+                                    'QUIT'
+                                )
+                            );
+                    END IF;
+                END
+                $$;
+                """);
     }
 
     private void patchDraftsTable() {

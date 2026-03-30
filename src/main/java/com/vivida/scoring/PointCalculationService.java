@@ -3,11 +3,8 @@ package com.vivida.scoring;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import com.vivida.game.advantage.AdvantageMovement;
 import com.vivida.game.advantage.AdvantageMovementRepository;
-import com.vivida.game.boot.Boot;
 import com.vivida.game.castaway.CastawayPerformance;
-import com.vivida.game.challenge.ChallengePerformance;
 import com.vivida.social.group.Group;
 import com.vivida.social.team.Team;
 import com.vivida.social.team.TeamCastaway;
@@ -143,6 +140,7 @@ public class PointCalculationService {
             Integer seasonId) {
         return switch (ruleType) {
             case INDIVIDUAL_IMMUNITY -> extractIndividualImmunity(castawayPerformance, seasonId);
+            case TRIBAL_IMMUNITY -> extractTribalImmunity(castawayPerformance, seasonId);
             case FOUND_IDOL -> extractFoundIdols(castawayPerformance, seasonId);
             case FOUND_ADVANTAGE -> extractFoundAdvantages(castawayPerformance, seasonId);
             case PLAYED_IDOL_SUCCESSFULLY -> extractPlayedIdolSuccessfully(castawayPerformance, seasonId);
@@ -169,6 +167,27 @@ public class PointCalculationService {
                     "Won individual immunity",
                     1,
                     null,  // pointsEach set later by projection service
+                    1
+                )));
+        return facts;
+    }
+
+    private List<ScorableEventFact> extractTribalImmunity(CastawayPerformance castawayPerformance, Integer seasonId) {
+        List<ScorableEventFact> facts = new ArrayList<>();
+        challengePerformanceRepository.findBySeasonId(seasonId).stream()
+                .filter(cp -> cp.getCastaway().getId().equals(castawayPerformance.getId()))
+                .filter(cp -> cp.getChallenge() != null
+                        && cp.getChallenge().getChallenge_type() != null
+                        && cp.getChallenge().getChallenge_type().toLowerCase().contains("tribal"))
+                .filter(cp -> Boolean.TRUE.equals(cp.getWon()))
+                .forEach(cp -> facts.add(new ScorableEventFact(
+                    RuleType.TRIBAL_IMMUNITY,
+                    ScoreEventSourceType.CHALLENGE_PERFORMANCE,
+                    cp.getId(),
+                    cp.getChallenge().getEpisode() != null ? cp.getChallenge().getEpisode().getEpisodeNumber() : null,
+                    "Won tribal immunity",
+                    1,
+                    null,
                     1
                 )));
         return facts;
