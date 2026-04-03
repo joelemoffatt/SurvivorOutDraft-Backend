@@ -1122,7 +1122,7 @@ public class DataLoader implements CommandLineRunner {
         group.setAdmin(users.get(0));
         group.setSeason(season);
         group.setStatus(GroupStatus.PENDING);
-        group.setTeamSize(10);
+        int draftTeamSize = 10;
         Episode latestWatchedEpisode = resolveLatestWatchedEpisode(50);
         group.setLatestEpisodeWatched(latestWatchedEpisode);
         applyCompletedStatusIfFinale(group, latestWatchedEpisode);
@@ -1155,7 +1155,7 @@ public class DataLoader implements CommandLineRunner {
         rules.add(buildPointRule(group, RuleType.QUIT, -2, "Quit"));
         pointRuleRepository.saveAll(rules);
 
-        createDraftForPendingGroup(group, DraftStyle.SNAKE);
+        createDraftForPendingGroup(group, DraftStyle.SNAKE, draftTeamSize);
 
         System.out.println("✓ Created: " + groupName + " (Season 50, PENDING)\n");
     }
@@ -1197,7 +1197,7 @@ public class DataLoader implements CommandLineRunner {
         group.setAdmin(users.get(0));
         group.setSeason(season);
         group.setStatus(GroupStatus.ACTIVE);
-        group.setTeamSize(4);  // 4 castaways per team for hardcoded rosters
+        int draftTeamSize = 4; // 4 castaways per team for hardcoded rosters
         Episode latestWatchedEpisode = resolveLatestWatchedEpisode(seasonNum);
         group.setLatestEpisodeWatched(latestWatchedEpisode);
         applyCompletedStatusIfFinale(group, latestWatchedEpisode);
@@ -1251,7 +1251,7 @@ public class DataLoader implements CommandLineRunner {
             }
         }
 
-        createCompletedDraftForGroup(group, users, seededPicks, DraftStyle.LINEAR);
+        createCompletedDraftForGroup(group, users, seededPicks, DraftStyle.LINEAR, draftTeamSize);
 
         System.out.println("✓ Created: " + groupName + " with hardcoded team rosters\n");
     }
@@ -1290,7 +1290,6 @@ public class DataLoader implements CommandLineRunner {
         group.setAdmin(users.get(0));
         group.setSeason(season);
         group.setStatus(GroupStatus.COMPLETED);
-        group.setTeamSize(0);
         Episode latestWatchedEpisode = resolveLatestWatchedEpisode(seasonNum);
         group.setLatestEpisodeWatched(latestWatchedEpisode);
         applyCompletedStatusIfFinale(group, latestWatchedEpisode);
@@ -1335,8 +1334,6 @@ public class DataLoader implements CommandLineRunner {
         int totalCastaways = seasonPerformances.size();
         int numTeams = users.size();
         int castawaysPerTeam = totalCastaways / numTeams;
-        group.setTeamSize(castawaysPerTeam);
-        groupRepository.save(group);
         
         System.out.println("  Total castaways: " + totalCastaways + " | Teams: " + numTeams + " | Per team: " + castawaysPerTeam);
         
@@ -1378,7 +1375,7 @@ public class DataLoader implements CommandLineRunner {
             seededPicks.add(new DraftSeedPick(team.getUser(), team, perf));
         }
 
-        createCompletedDraftForGroup(group, users, seededPicks, DraftStyle.SNAKE);
+        createCompletedDraftForGroup(group, users, seededPicks, DraftStyle.SNAKE, castawaysPerTeam);
 
         System.out.println("✓ Created: " + groupName + " with random team rosters\n");
     }
@@ -1404,8 +1401,9 @@ public class DataLoader implements CommandLineRunner {
     }
 
     private void createDraftForPendingGroup(Group group,
-                                            DraftStyle style) {
-        int teamSize = group.getTeamSize() != null ? group.getTeamSize() : 0;
+                                            DraftStyle style,
+                                            Integer draftTeamSize) {
+        int teamSize = draftTeamSize != null ? draftTeamSize : 0;
 
         Draft draft = new Draft();
         draft.setGroup(group);
@@ -1430,21 +1428,17 @@ public class DataLoader implements CommandLineRunner {
     private void createCompletedDraftForGroup(Group group,
                                               List<User> participantsInOrder,
                                               List<DraftSeedPick> seededPicks,
-                                              DraftStyle style) {
+                                              DraftStyle style,
+                                              Integer preferredTeamSize) {
         if (participantsInOrder.isEmpty() || seededPicks.isEmpty()) {
             return;
         }
 
         int totalParticipants = participantsInOrder.size();
         int computedTeamSize = Math.max(1, seededPicks.size() / totalParticipants);
-        int teamSize = group.getTeamSize() != null && group.getTeamSize() > 0
-                ? group.getTeamSize()
+        int teamSize = preferredTeamSize != null && preferredTeamSize > 0
+                ? preferredTeamSize
                 : computedTeamSize;
-
-        if (group.getTeamSize() == null || group.getTeamSize() == 0) {
-            group.setTeamSize(teamSize);
-            groupRepository.save(group);
-        }
 
         Map<Integer, Integer> participantPositionByUserId = new HashMap<>();
         for (int i = 0; i < participantsInOrder.size(); i++) {
@@ -1577,9 +1571,10 @@ public class DataLoader implements CommandLineRunner {
         group.setSeason(season);
         
         // Set draft configuration for Season 50
+        Integer season50DraftTeamSize = null;
         if (seasonNum == 50) {
             group.setStatus(GroupStatus.PENDING);
-            group.setTeamSize(5);  // Each team gets 5 castaways
+            season50DraftTeamSize = 5; // Each team gets 5 castaways
         } else {
             group.setStatus(GroupStatus.COMPLETED);
         }
@@ -1618,6 +1613,10 @@ public class DataLoader implements CommandLineRunner {
             teams.add(team);
         }
 
+        if (seasonNum == 50 && season50DraftTeamSize != null) {
+            createDraftForPendingGroup(group, DraftStyle.SNAKE, season50DraftTeamSize);
+        }
+
         // For Season 50, don't pre-draft players - let the draft happen
         if (seasonNum == 50) {
             System.out.println("✓ Test group seeded for Season " + seasonNum + ": " + groupName);
@@ -1653,7 +1652,7 @@ public class DataLoader implements CommandLineRunner {
             seededPicks.add(new DraftSeedPick(team.getUser(), team, performances.get(i)));
         }
 
-        createCompletedDraftForGroup(group, users, seededPicks, DraftStyle.LINEAR);
+        createCompletedDraftForGroup(group, users, seededPicks, DraftStyle.LINEAR, null);
 
         scoreProjectionService.recalculateGroupScores(group);
 

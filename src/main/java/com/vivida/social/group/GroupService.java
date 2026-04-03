@@ -43,16 +43,16 @@ public class GroupService {
     private final TeamCastawayScoreEventRepository teamCastawayScoreEventRepository;
 
     public GroupService(GroupRepository groupRepository,
-                        GroupMemberRepository groupMemberRepository,
-                        TeamRepository teamRepository,
-                        CastawayPerformanceRepository castawayPerformanceRepository,
-                        BootRepository bootRepository,
-                        EpisodeRepository episodeRepository,
-                        SeasonRepository seasonRepository,
-                        DraftRepository draftRepository,
-                        ScoreProjectionService scoreProjectionService,
-                        PointRuleRepository pointRuleRepository,
-                        TeamCastawayScoreEventRepository teamCastawayScoreEventRepository) {
+            GroupMemberRepository groupMemberRepository,
+            TeamRepository teamRepository,
+            CastawayPerformanceRepository castawayPerformanceRepository,
+            BootRepository bootRepository,
+            EpisodeRepository episodeRepository,
+            SeasonRepository seasonRepository,
+            DraftRepository draftRepository,
+            ScoreProjectionService scoreProjectionService,
+            PointRuleRepository pointRuleRepository,
+            TeamCastawayScoreEventRepository teamCastawayScoreEventRepository) {
         this.groupRepository = groupRepository;
         this.groupMemberRepository = groupMemberRepository;
         this.teamRepository = teamRepository;
@@ -98,7 +98,8 @@ public class GroupService {
     }
 
     @Transactional
-    public List<PointRule> syncRulesForGroup(Integer groupId, List<UpdateGroupSettingsRequest.PointRuleRequest> ruleRequests) {
+    public List<PointRule> syncRulesForGroup(Integer groupId,
+            List<UpdateGroupSettingsRequest.PointRuleRequest> ruleRequests) {
         Group group = getGroupById(groupId);
         if (ruleRequests == null) {
             return pointRuleRepository.findByGroupId(groupId);
@@ -165,8 +166,7 @@ public class GroupService {
 
     public Group getGroupById(int id) {
         return groupRepository.findById(id).orElseThrow(() -> new ResponseStatusException(
-                HttpStatus.NOT_FOUND, "Group not found with id " + id
-        ));
+                HttpStatus.NOT_FOUND, "Group not found with id " + id));
     }
 
     public List<Group> getGroupsByAdminId(int adminId) {
@@ -192,14 +192,14 @@ public class GroupService {
     public Group createGroupWithAdmin(Group group) {
         // Save the group first
         Group savedGroup = groupRepository.save(group);
-        
+
         // Automatically add admin as an ACCEPTED member
         GroupMember adminMembership = new GroupMember();
         adminMembership.setGroup(savedGroup);
         adminMembership.setUser(savedGroup.getAdmin());
         adminMembership.setStatus(MembershipStatus.ACCEPTED);
         groupMemberRepository.save(adminMembership);
-        
+
         // Automatically create a team for the admin
         Team adminTeam = new Team();
         adminTeam.setGroup(savedGroup);
@@ -207,7 +207,7 @@ public class GroupService {
         adminTeam.setTeamName("Team " + savedGroup.getAdmin().getUsername());
         adminTeam.setTotalPoints(0);
         teamRepository.save(adminTeam);
-        
+
         return savedGroup;
     }
 
@@ -215,11 +215,15 @@ public class GroupService {
         if (group == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Group is required");
         }
+        Integer resolvedTeamSize = group.getDraft() != null ? group.getDraft().getTeamSize() : null;
+        if (resolvedTeamSize == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Draft teamSize is required");
+        }
         Integer seasonId = group != null && group.getSeason() != null ? group.getSeason().getSeason() : null;
         Integer latestWatchedEpisodeNumber = group != null && group.getLatestEpisodeWatched() != null
                 ? group.getLatestEpisodeWatched().getEpisodeNumber()
                 : null;
-        validateTeamSizeWithinAvailableCastaways(group.getTeamSize(), seasonId, latestWatchedEpisodeNumber);
+        validateTeamSizeWithinAvailableCastaways(resolvedTeamSize, seasonId, latestWatchedEpisodeNumber);
         groupRepository.save(group);
     }
 
@@ -273,14 +277,17 @@ public class GroupService {
         if (request.getName() == null || request.getName().trim().isEmpty()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Group name is required");
         }
-        if (request.getTeamSize() == null || request.getTeamSize() <= 0) {
+        Integer requestedTeamSize = request.getDraft() != null ? request.getDraft().getTeamSize() : null;
+        if (requestedTeamSize == null || requestedTeamSize <= 0) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Team size must be a positive integer");
         }
 
         Integer firstScoringEpisodeNumber = request.getFirstScoringEpisodeNumber() != null
                 ? request.getFirstScoringEpisodeNumber()
                 : 1;
-        DraftStyle style = request.getStyle() != null ? request.getStyle() : DraftStyle.SNAKE;
+        DraftStyle style = request.getDraft() != null && request.getDraft().getStyle() != null
+                ? request.getDraft().getStyle()
+                : DraftStyle.SNAKE;
         if (firstScoringEpisodeNumber < 1) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "firstScoringEpisodeNumber must be >= 1");
@@ -312,18 +319,18 @@ public class GroupService {
             }
         }
 
-            Integer latestWatchedEpisodeNumber = latestWatchedEpisode != null
+        Integer latestWatchedEpisodeNumber = latestWatchedEpisode != null
                 ? latestWatchedEpisode.getEpisodeNumber()
                 : null;
+        if (group.getStatus() == GroupStatus.PENDING || group.getStatus() == GroupStatus.DRAFTING) {
             validateTeamSizeWithinAvailableCastaways(
-                request.getTeamSize(),
-                season.getSeason(),
-                latestWatchedEpisodeNumber
-            );
+            requestedTeamSize,
+            season.getSeason(),
+            latestWatchedEpisodeNumber);
+        }
 
         group.setName(request.getName().trim());
         group.setSeason(season);
-        group.setTeamSize(request.getTeamSize());
         group.setLatestEpisodeWatched(latestWatchedEpisode);
         applyStatusFromLatestWatchedEpisode(group, latestWatchedEpisode);
         group.setFirstScoringEpisodeNumber(firstScoringEpisodeNumber);
@@ -338,7 +345,7 @@ public class GroupService {
         // Keep pending draft configuration in sync with editable group settings.
         draftRepository.findByGroupIdAndStatus(groupId, DraftStatus.PENDING).ifPresent(draft -> {
             draft.setSeason(season);
-            draft.setTeamSize(request.getTeamSize());
+            draft.setTeamSize(requestedTeamSize);
             draft.setStyle(style);
             draftRepository.save(draft);
         });
@@ -348,8 +355,8 @@ public class GroupService {
     }
 
     public void validateTeamSizeWithinAvailableCastaways(Integer teamSize,
-                                                         Integer seasonId,
-                                                         Integer latestWatchedEpisodeNumber) {
+            Integer seasonId,
+            Integer latestWatchedEpisodeNumber) {
         if (teamSize == null || teamSize <= 0) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Team size must be a positive integer");
         }
@@ -360,19 +367,24 @@ public class GroupService {
         int totalCastaways = (int) castawayPerformanceRepository.countBySeasonId(seasonId);
         int bootedCastaways = latestWatchedEpisodeNumber == null
                 ? 0
-                : bootRepository.findBySeasonIdAndEpisodeNumberLessThanEqual(seasonId, latestWatchedEpisodeNumber).size();
+                : bootRepository.findBySeasonIdAndEpisodeNumberLessThanEqual(seasonId, latestWatchedEpisodeNumber)
+                        .size();
         int availableCastaways = Math.max(totalCastaways - bootedCastaways, 0);
 
         if (teamSize > availableCastaways) {
             throw new ResponseStatusException(
                     HttpStatus.BAD_REQUEST,
-                    "Team size cannot exceed available castaways (" + availableCastaways + ")"
-            );
+                    "Team size cannot exceed available castaways (" + availableCastaways + ")");
         }
     }
 
     private void applyStatusFromLatestWatchedEpisode(Group group, Episode latestWatchedEpisode) {
-        if (latestWatchedEpisode == null) {
+        if (group == null || latestWatchedEpisode == null) {
+            return;
+        }
+
+        // Do not transition group lifecycle before the draft is completed.
+        if (group.getDraft() == null || group.getDraft().getStatus() != DraftStatus.COMPLETED) {
             return;
         }
 
@@ -387,9 +399,9 @@ public class GroupService {
     public Group markGroupAccessed(Integer groupId, Integer userId) {
         Group group = getGroupById(groupId);
         GroupMember membership = groupMemberRepository.findByGroupIdAndUserIdAndStatus(
-                        groupId,
-                        userId,
-                        MembershipStatus.ACCEPTED)
+                groupId,
+                userId,
+                MembershipStatus.ACCEPTED)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.FORBIDDEN,
                         "You must be an accepted member of this group"));
         membership.setLastAccessedAt(java.time.LocalDateTime.now());

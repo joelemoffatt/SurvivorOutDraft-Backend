@@ -18,11 +18,9 @@ public class CreateGroupRequest {
     private String name;
     private AdminRef admin;
     private SeasonRef season;
-    private Integer teamSize;
     private EpisodeRef latestWatchedEpisode;
     private Integer firstScoringEpisodeNumber;
-    private DraftStyle style;
-    private LocalDateTime scheduledAt;
+    private DraftConfig draft;
     private List<PointRuleRequest> pointRules = new ArrayList<>();
 
     @Getter
@@ -56,5 +54,15 @@ public class CreateGroupRequest {
     @NoArgsConstructor
     public static class EpisodeRef {
         private Integer id;
+    }
+
+    @Getter
+    @Setter
+    @AllArgsConstructor
+    @NoArgsConstructor
+    public static class DraftConfig {
+        private Integer teamSize;
+        private DraftStyle style;
+        private LocalDateTime scheduledAt;
     }
 }

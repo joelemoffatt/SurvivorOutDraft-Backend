@@ -24,7 +24,6 @@ public class GroupDTO {
     private AdminDTO admin;
     private SeasonDTO season;
     private DraftRefDTO draft;
-    private Integer teamSize;
     private Integer firstScoringEpisodeNumber;
     private EpisodeDTO latestEpisodeWatched;
     private GroupStatus status;
@@ -77,6 +76,7 @@ public class GroupDTO {
         private Integer id;
         private DraftStatus status;
         private DraftStyle style;
+        private Integer teamSize;
         private LocalDateTime scheduledAt;
         private LocalDateTime startedAt;
         private LocalDateTime completedAt;
@@ -86,7 +86,6 @@ public class GroupDTO {
         GroupDTO dto = new GroupDTO();
         dto.setId(group.getId());
         dto.setName(group.getName());
-        dto.setTeamSize(group.getTeamSize());
         dto.setFirstScoringEpisodeNumber(group.getFirstScoringEpisodeNumber());
         if (group.getLatestEpisodeWatched() != null) {
             EpisodeDTO epDTO = new EpisodeDTO();
@@ -104,6 +103,7 @@ public class GroupDTO {
             draftDTO.setId(draft.getId());
             draftDTO.setStatus(draft.getStatus());
             draftDTO.setStyle(draft.getStyle());
+            draftDTO.setTeamSize(draft.getTeamSize());
             draftDTO.setScheduledAt(draft.getScheduledAt());
             draftDTO.setStartedAt(draft.getStartedAt());
             draftDTO.setCompletedAt(draft.getCompletedAt());

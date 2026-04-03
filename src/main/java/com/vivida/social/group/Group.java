@@ -43,8 +43,6 @@ public class Group {
     @JoinColumn(name = "draft_id")
     private Draft draft;
 
-    private Integer teamSize;
-
     /**
      * The last episode this group has watched for its season.
      * Used to hide spoilers by removing castaways booted after this episode.

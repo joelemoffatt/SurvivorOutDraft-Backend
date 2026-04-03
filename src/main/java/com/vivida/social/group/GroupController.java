@@ -98,7 +98,11 @@ public class GroupController {
         if (request.getSeason() == null || request.getSeason().getId() == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Season is required");
         }
-        if (request.getTeamSize() == null || request.getTeamSize() <= 0) {
+        if (request.getDraft() == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Draft configuration is required");
+        }
+        Integer requestedTeamSize = request.getDraft().getTeamSize();
+        if (requestedTeamSize == null || requestedTeamSize <= 0) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Team size must be a positive integer");
         }
         if (request.getPointRules() == null) {
@@ -136,7 +140,7 @@ public class GroupController {
                 ? latestWatchedEpisode.getEpisodeNumber()
                 : null;
             groupService.validateTeamSizeWithinAvailableCastaways(
-                request.getTeamSize(),
+                requestedTeamSize,
                 season.getSeason(),
                 latestWatchedEpisodeNumber
             );
@@ -146,7 +150,6 @@ public class GroupController {
         group.setName(request.getName().trim());
         group.setAdmin(admin);
         group.setSeason(season);
-        group.setTeamSize(request.getTeamSize());
         group.setLatestEpisodeWatched(latestWatchedEpisode); // null = no episodes watched
         group.setFirstScoringEpisodeNumber(
             request.getFirstScoringEpisodeNumber() != null && request.getFirstScoringEpisodeNumber() > 0
@@ -162,15 +165,16 @@ public class GroupController {
         draftService.createPendingDraftForGroup(
             savedGroup,
             admin,
-            request.getStyle() != null ? request.getStyle() : DraftStyle.SNAKE,
-            request.getTeamSize(),
-            request.getScheduledAt()
+            request.getDraft().getStyle() != null ? request.getDraft().getStyle() : DraftStyle.SNAKE,
+            requestedTeamSize,
+            request.getDraft().getScheduledAt()
         );
 
         // Create point rules from request list
         List<PointRule> rules = groupService.createRulesForGroup(savedGroup, request.getPointRules());
 
-        return GroupDTO.fromEntity(savedGroup, rules);
+        Group refreshedGroup = groupService.getGroupById(savedGroup.getId());
+        return GroupDTO.fromEntity(refreshedGroup, rules);
     }
 
     @PutMapping

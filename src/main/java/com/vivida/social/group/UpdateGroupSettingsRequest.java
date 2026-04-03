@@ -16,10 +16,9 @@ import java.util.List;
 public class UpdateGroupSettingsRequest {
     private String name;
     private Integer seasonId;
-    private Integer teamSize;
     private Integer latestWatchedEpisodeId;
     private Integer firstScoringEpisodeNumber;
-    private DraftStyle style;
+    private DraftConfig draft;
     private List<PointRuleRequest> pointRules = new ArrayList<>();
 
     @Getter
@@ -29,5 +28,14 @@ public class UpdateGroupSettingsRequest {
     public static class PointRuleRequest {
         private String ruleType;
         private Integer points;
+    }
+
+    @Getter
+    @Setter
+    @AllArgsConstructor
+    @NoArgsConstructor
+    public static class DraftConfig {
+        private Integer teamSize;
+        private DraftStyle style;
     }
 }
