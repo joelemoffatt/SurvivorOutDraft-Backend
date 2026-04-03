@@ -1123,7 +1123,7 @@ public class DataLoader implements CommandLineRunner {
         group.setSeason(season);
         group.setStatus(GroupStatus.PENDING);
         group.setTeamSize(10);
-        Episode latestWatchedEpisode = episodeCache.get(50004);
+        Episode latestWatchedEpisode = resolveLatestWatchedEpisode(50);
         group.setLatestEpisodeWatched(latestWatchedEpisode);
         applyCompletedStatusIfFinale(group, latestWatchedEpisode);
         groupRepository.save(group);
@@ -1164,20 +1164,7 @@ public class DataLoader implements CommandLineRunner {
         Optional<Group> existingGroupOpt = groupRepository.findByName(groupName);
         if (existingGroupOpt.isPresent()) {
             Group existingGroup = existingGroupOpt.get();
-            Episode latestWatchedEpisode = null;
-            if (seasonNum != null) {
-                if (seasonNum == 46) {
-                    latestWatchedEpisode = episodeCache.get(46013);
-                } else if (seasonNum == 47) {
-                    latestWatchedEpisode = episodeCache.get(47014);
-                } else if (seasonNum == 48) {
-                    latestWatchedEpisode = episodeCache.get(48013);
-                } else if (seasonNum == 49) {
-                    latestWatchedEpisode = episodeCache.get(49013);
-                } else if (seasonNum == 50) {
-                    latestWatchedEpisode = episodeCache.get(50004);
-                }
-            }
+            Episode latestWatchedEpisode = resolveLatestWatchedEpisode(seasonNum);
             if (latestWatchedEpisode != null) {
                 existingGroup.setLatestEpisodeWatched(latestWatchedEpisode);
                 applyCompletedStatusIfFinale(existingGroup, latestWatchedEpisode);
@@ -1211,20 +1198,7 @@ public class DataLoader implements CommandLineRunner {
         group.setSeason(season);
         group.setStatus(GroupStatus.ACTIVE);
         group.setTeamSize(4);  // 4 castaways per team for hardcoded rosters
-        Episode latestWatchedEpisode = null;
-        if (seasonNum != null) {
-            if (seasonNum == 46) {
-                latestWatchedEpisode = episodeCache.get(46013);
-            } else if (seasonNum == 47) {
-                latestWatchedEpisode = episodeCache.get(47014);
-            } else if (seasonNum == 48) {
-                latestWatchedEpisode = episodeCache.get(48013);
-            } else if (seasonNum == 49) {
-                latestWatchedEpisode = episodeCache.get(49013);
-            } else if (seasonNum == 50) {
-                latestWatchedEpisode = episodeCache.get(50004);
-            }
-        }
+        Episode latestWatchedEpisode = resolveLatestWatchedEpisode(seasonNum);
         group.setLatestEpisodeWatched(latestWatchedEpisode);
         applyCompletedStatusIfFinale(group, latestWatchedEpisode);
         groupRepository.save(group);
@@ -1317,6 +1291,9 @@ public class DataLoader implements CommandLineRunner {
         group.setSeason(season);
         group.setStatus(GroupStatus.COMPLETED);
         group.setTeamSize(0);
+        Episode latestWatchedEpisode = resolveLatestWatchedEpisode(seasonNum);
+        group.setLatestEpisodeWatched(latestWatchedEpisode);
+        applyCompletedStatusIfFinale(group, latestWatchedEpisode);
         groupRepository.save(group);
 
         // Add users to group
@@ -1606,6 +1583,9 @@ public class DataLoader implements CommandLineRunner {
         } else {
             group.setStatus(GroupStatus.COMPLETED);
         }
+        Episode latestWatchedEpisode = resolveLatestWatchedEpisode(seasonNum);
+        group.setLatestEpisodeWatched(latestWatchedEpisode);
+        applyCompletedStatusIfFinale(group, latestWatchedEpisode);
         
         groupRepository.save(group);
 
@@ -1692,6 +1672,34 @@ public class DataLoader implements CommandLineRunner {
         rule.setPoints(points);
         rule.setDescription(description);
         return rule;
+    }
+
+    private Episode resolveLatestWatchedEpisode(Integer seasonNum) {
+        if (seasonNum == null) {
+            return null;
+        }
+
+        // Season 50 intentionally stays pinned to episode 4 for seeded groups.
+        if (seasonNum == 50) {
+            Episode season50Episode = episodeCache.get(50004);
+            if (season50Episode != null) {
+                return season50Episode;
+            }
+        }
+
+        Episode latestFromCache = episodeCache.values().stream()
+                .filter(episode -> episode.getSeason() != null && seasonNum.equals(episode.getSeason().getSeason()))
+                .filter(episode -> episode.getEpisodeNumber() != null)
+                .max(Comparator.comparing(Episode::getEpisodeNumber))
+                .orElse(null);
+        if (latestFromCache != null) {
+            return latestFromCache;
+        }
+
+        return episodeRepository.findBySeasonId(seasonNum).stream()
+                .filter(episode -> episode.getEpisodeNumber() != null)
+                .max(Comparator.comparing(Episode::getEpisodeNumber))
+                .orElse(null);
     }
 
     private void applyCompletedStatusIfFinale(Group group, Episode latestWatchedEpisode) {

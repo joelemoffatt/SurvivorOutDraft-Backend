@@ -178,7 +178,8 @@ public class PointCalculationService {
                 .filter(cp -> cp.getCastaway().getId().equals(castawayPerformance.getId()))
                 .filter(cp -> cp.getChallenge() != null
                         && cp.getChallenge().getChallenge_type() != null
-                        && cp.getChallenge().getChallenge_type().toLowerCase().contains("tribal"))
+                && cp.getChallenge().getChallenge_type().toLowerCase().contains("tribal")
+                && cp.getChallenge().getChallenge_type().toLowerCase().contains("immunity"))
                 .filter(cp -> Boolean.TRUE.equals(cp.getWon()))
                 .forEach(cp -> facts.add(new ScorableEventFact(
                     RuleType.TRIBAL_IMMUNITY,
