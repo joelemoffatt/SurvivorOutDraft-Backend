@@ -8,6 +8,7 @@ import org.springframework.web.server.ResponseStatusException;
 import com.vivida.auth.User;
 import com.vivida.auth.Role;
 import com.vivida.auth.UserRepository;
+import com.vivida.draft.DraftStatus;
 import com.vivida.social.team.Team;
 import com.vivida.social.team.TeamRepository;
 
@@ -103,6 +104,31 @@ public class GroupMemberService {
     public void deleteGroupMemberById(int id) {
         groupMemberRepository.deleteById(id);
     }
+
+    public void deleteGroupMemberById(int id, Integer requestingUserId) {
+        GroupMember member = getGroupMemberById(id);
+        Group group = member.getGroup();
+
+        User requestingUser = userRepository.findById(requestingUserId)
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND, "Requesting user not found with id: " + requestingUserId));
+
+        boolean isInvitee = member.getUser().getId().equals(requestingUserId);
+        if (isInvitee) {
+            groupMemberRepository.deleteById(id);
+            return;
+        }
+
+        boolean isGroupAdmin = group.getAdmin().getId().equals(requestingUserId);
+        boolean isPlatformAdmin = requestingUser.getRole() == Role.ADMIN;
+        if (!isGroupAdmin && !isPlatformAdmin) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "Only the group admin can remove members");
+        }
+
+        ensureDraftPendingForMemberChanges(group);
+        groupMemberRepository.deleteById(id);
+    }
     
     public GroupMember inviteByUsername(Integer groupId, String username, Integer requestingUserId) {
         User requestingUser = userRepository.findById(requestingUserId)
@@ -126,6 +152,8 @@ public class GroupMemberService {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN,
                     "Only the group admin can invite members");
         }
+
+        ensureDraftPendingForMemberChanges(group);
         
         // Check if user is already a member or invited
         if (groupMemberRepository.existsByGroupIdAndUserId(groupId, user.getId())) {
@@ -140,6 +168,13 @@ public class GroupMemberService {
         invitation.setStatus(MembershipStatus.INVITED);
         
         return groupMemberRepository.save(invitation);
+    }
+
+    private void ensureDraftPendingForMemberChanges(Group group) {
+        if (group == null || group.getDraft() == null || group.getDraft().getStatus() != DraftStatus.PENDING) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Members can only be modified while the draft is pending");
+        }
     }
     
     public List<GroupMember> getPendingInvitationsByUserId(Integer userId) {

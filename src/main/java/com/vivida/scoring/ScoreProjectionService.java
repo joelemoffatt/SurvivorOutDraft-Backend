@@ -251,7 +251,7 @@ public class ScoreProjectionService {
             facts = facts.stream()
                 .filter(fact -> fact.getEpisodeNumber() != null)
                 .filter(fact -> fact.getEpisodeNumber() >= firstScoringEpisodeNumber)
-                .filter(fact -> latestEpisodeNumber == null || fact.getEpisodeNumber() <= latestEpisodeNumber)
+                .filter(fact -> latestEpisodeNumber != null && fact.getEpisodeNumber() <= latestEpisodeNumber)
                 .toList();
             
             // Convert each fact to a TeamCastawayScoreEvent
