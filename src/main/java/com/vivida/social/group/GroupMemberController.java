@@ -80,8 +80,9 @@ public class GroupMemberController {
     }
 
     @DeleteMapping("{id}")
-    public void deleteGroupMember(@PathVariable Integer id) {
-        groupMemberService.deleteGroupMemberById(id);
+    public void deleteGroupMember(@PathVariable Integer id, Authentication authentication) {
+        User requestingUser = (User) authentication.getPrincipal();
+        groupMemberService.deleteGroupMemberById(id, requestingUser.getId());
     }
 }
 
