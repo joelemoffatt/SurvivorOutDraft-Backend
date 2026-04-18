@@ -10,7 +10,7 @@ import jakarta.annotation.PostConstruct;
  * Applies tiny idempotent schema patches needed for local/dev startup.
  */
 @Component
-@ConditionalOnProperty(name = "vivida.schema.patch.enabled", havingValue = "true", matchIfMissing = true)
+@ConditionalOnProperty(name = "vivida.schema.patch.enabled", havingValue = "true", matchIfMissing = false)
 public class SchemaPatchRunner {
 
     private final JdbcTemplate jdbcTemplate;

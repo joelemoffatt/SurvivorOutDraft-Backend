@@ -12,7 +12,9 @@ import com.vivida.social.team.TeamService;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Orchestrates the full rebuild of score projections for a group.
@@ -169,7 +171,7 @@ public class ScoreProjectionService {
             System.out.println("  Saved " + allEvents.size() + " score events");
             
             // Aggregate scores back to TeamCastaway and Team
-            aggregateScores(teams);
+            aggregateScores(teams, allEvents);
             
             // Mark run completed
             completeCalculationRun(run);
@@ -283,8 +285,17 @@ public class ScoreProjectionService {
     /**
      * Aggregate score events back into TeamCastaway.points and Team.totalPoints.
      */
-    private void aggregateScores(List<Team> teams) {
+    private void aggregateScores(List<Team> teams, List<TeamCastawayScoreEvent> allEvents) {
         System.out.println("  Aggregating scores...");
+
+        Map<Integer, Integer> castawayTotalsById = new HashMap<>();
+        for (TeamCastawayScoreEvent event : allEvents) {
+            Integer castawayId = event.getTeamCastaway() != null ? event.getTeamCastaway().getId() : null;
+            if (castawayId == null) {
+                continue;
+            }
+            castawayTotalsById.merge(castawayId, event.getTotalPoints(), Integer::sum);
+        }
         
         for (Team team : teams) {
             int teamTotal = 0;
@@ -293,11 +304,7 @@ public class ScoreProjectionService {
             
             if (roster != null) {
                 for (TeamCastaway teamCastaway : roster) {
-                    // Sum all score events for this castaway
-                    List<TeamCastawayScoreEvent> events = scoreEventRepository.findByTeamCastawayId(teamCastaway.getId());
-                    int castawayTotal = events.stream()
-                        .mapToInt(TeamCastawayScoreEvent::getTotalPoints)
-                        .sum();
+                    int castawayTotal = castawayTotalsById.getOrDefault(teamCastaway.getId(), 0);
                     
                     teamCastaway.setPoints(castawayTotal);
                     teamCastawayRepository.save(teamCastaway);

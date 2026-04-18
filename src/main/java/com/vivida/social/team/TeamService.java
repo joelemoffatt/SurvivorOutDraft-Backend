@@ -14,12 +14,14 @@ import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
 @Service
 public class TeamService {
@@ -30,13 +32,16 @@ public class TeamService {
     private final BootRepository bootRepository;
         private final TeamAvatarRepository teamAvatarRepository;
 
-        private static final long MAX_AVATAR_FILE_SIZE_BYTES = 5L * 1024L * 1024L;
-        private static final Set<String> ALLOWED_AVATAR_CONTENT_TYPES = Set.of(
+    private final Map<String, Map<Integer, String>> bootPlacementCache = new ConcurrentHashMap<>();
+    private final Map<Integer, String> avatarImageUrlCache = new ConcurrentHashMap<>();
+
+    private static final long MAX_AVATAR_FILE_SIZE_BYTES = 5L * 1024L * 1024L;
+    private static final Set<String> ALLOWED_AVATAR_CONTENT_TYPES = Set.of(
             "image/jpeg",
             "image/png",
             "image/webp",
             "image/gif"
-        );
+    );
 
     public TeamService(
             TeamRepository teamRepository,
@@ -197,10 +202,19 @@ public class TeamService {
     }
 
     public String getAvatarImageUrl(Integer teamId) {
-        if (teamId == null || !teamAvatarRepository.existsByTeamId(teamId)) {
+        if (teamId == null) {
             return null;
         }
-        return TeamAvatarImageUrlResolver.buildAvatarUrl(teamId);
+        String cached = avatarImageUrlCache.get(teamId);
+        if (cached != null) {
+            return cached.isEmpty() ? null : cached;
+        }
+
+        String resolved = teamAvatarRepository.findByTeamId(teamId)
+            .map(avatar -> TeamAvatarImageUrlResolver.buildAvatarUrl(teamId))
+            .orElse(null);
+        avatarImageUrlCache.put(teamId, resolved == null ? "" : resolved);
+        return resolved;
     }
 
     private void upsertTeamAvatar(Team team, MultipartFile avatarFile) {
@@ -224,6 +238,7 @@ public class TeamService {
             avatar.setImageData(avatarFile.getBytes());
             avatar.setContentType(contentType);
             teamAvatarRepository.save(avatar);
+            avatarImageUrlCache.remove(team.getId());
         } catch (IOException ex) {
             throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to read avatar upload", ex);
         }
@@ -249,25 +264,28 @@ public class TeamService {
             return;
         }
 
-        List<Boot> boots = latestEpisodeNumber != null
-                ? bootRepository.findBySeasonIdAndEpisodeNumberLessThanEqual(seasonId, latestEpisodeNumber)
-                : bootRepository.findBySeasonId(seasonId);
-
-        boots.sort(
+        String cacheKey = seasonId + ":" + (latestEpisodeNumber != null ? latestEpisodeNumber : "all");
+        Map<Integer, String> placementByPerformanceId = bootPlacementCache.computeIfAbsent(cacheKey, key -> {
+            List<Boot> boots = latestEpisodeNumber != null
+                    ? bootRepository.findBySeasonIdAndEpisodeNumberLessThanEqual(seasonId, latestEpisodeNumber)
+                    : bootRepository.findBySeasonId(seasonId);
+            boots.sort(
                 Comparator.comparingInt((Boot boot) ->
-                                boot.getEpisode() != null && boot.getEpisode().getEpisodeNumber() != null
-                                        ? boot.getEpisode().getEpisodeNumber()
-                                        : 0)
-                        .reversed());
+                        boot.getEpisode() != null && boot.getEpisode().getEpisodeNumber() != null
+                            ? boot.getEpisode().getEpisodeNumber()
+                            : 0)
+                    .reversed());
 
-        Map<Integer, String> placementByPerformanceId = new HashMap<>();
-        for (Boot boot : boots) {
-            Integer performanceId = boot.getCastaway() != null ? boot.getCastaway().getId() : null;
-            if (performanceId == null || placementByPerformanceId.containsKey(performanceId)) {
-                continue;
+            Map<Integer, String> placements = new HashMap<>();
+            for (Boot boot : boots) {
+                Integer performanceId = boot.getCastaway() != null ? boot.getCastaway().getId() : null;
+                if (performanceId == null || placements.containsKey(performanceId)) {
+                    continue;
+                }
+                placements.put(performanceId, derivePlacementFromBootEvent(boot.getEvent()));
             }
-            placementByPerformanceId.put(performanceId, derivePlacementFromBootEvent(boot.getEvent()));
-        }
+            return placements;
+        });
 
         for (TeamCastawayDTO castaway : dto.roster) {
             Integer performanceId = castaway.castawayPerformance != null ? castaway.castawayPerformance.id : null;
@@ -308,6 +326,16 @@ public class TeamService {
     public ScoreBreakdownDTO getScoreBreakdown(int teamId) {
         Team team = getTeamById(teamId);
         List<TeamCastaway> roster = teamCastawayRepository.findByTeamId(teamId);
+        List<TeamCastawayScoreEvent> events = scoreEventRepository.findByTeamId(teamId);
+
+        Map<Integer, List<TeamCastawayScoreEvent>> eventsByCastawayId = new HashMap<>();
+        for (TeamCastawayScoreEvent event : events) {
+            Integer castawayId = event.getTeamCastaway() != null ? event.getTeamCastaway().getId() : null;
+            if (castawayId == null) {
+                continue;
+            }
+            eventsByCastawayId.computeIfAbsent(castawayId, key -> new ArrayList<>()).add(event);
+        }
 
         ScoreBreakdownDTO dto = new ScoreBreakdownDTO();
         dto.teamId = team.getId();
@@ -322,8 +350,8 @@ public class TeamService {
                 cb.castawayName = tc.getCastawayPerformance().getCastaway().getName();
                 cb.totalPoints = tc.getPoints();
 
-                List<TeamCastawayScoreEvent> events = scoreEventRepository.findByTeamCastawayId(tc.getId());
-                cb.scoreEvents = events.stream()
+                List<TeamCastawayScoreEvent> castawayEvents = eventsByCastawayId.getOrDefault(tc.getId(), List.of());
+                cb.scoreEvents = castawayEvents.stream()
                     .sorted(Comparator.comparing(e -> e.getEpisodeNumber() != null ? e.getEpisodeNumber() : 0))
                     .map(e -> {
                         ScoreBreakdownDTO.ScoreEventDTO sed = new ScoreBreakdownDTO.ScoreEventDTO();
