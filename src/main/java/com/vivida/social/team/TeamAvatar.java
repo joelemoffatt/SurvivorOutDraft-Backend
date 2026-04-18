@@ -8,7 +8,6 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
-import jakarta.persistence.Lob;
 import jakarta.persistence.OneToOne;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.PreUpdate;
@@ -17,6 +16,8 @@ import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 import java.time.LocalDateTime;
 
@@ -39,9 +40,9 @@ public class TeamAvatar {
     @Column(nullable = false, length = 100)
     private String contentType;
 
-    @Lob
     @Basic(fetch = FetchType.LAZY)
-    @Column(nullable = false)
+    @JdbcTypeCode(SqlTypes.VARBINARY)
+    @Column(name = "image_data", nullable = false, columnDefinition = "bytea")
     private byte[] imageData;
 
     @Column(nullable = false)

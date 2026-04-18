@@ -74,6 +74,11 @@ import java.util.*;
 @ConditionalOnProperty(name = "vivida.dataloader.enabled", havingValue = "true")
 @Component
 public class DataLoader implements CommandLineRunner {
+    @FunctionalInterface
+    private interface TimedStep {
+        void run() throws Exception;
+    }
+
     @Value("${vivida.dataloader.load-game-data:true}")
     private boolean loadGameData;
     
@@ -172,40 +177,38 @@ public class DataLoader implements CommandLineRunner {
             
             if (loadGameData) {
                 System.out.println("[GAME DATA] Loading...");
-                loadSeasons();
-                seasonRepository.findAll().forEach(s -> seasonCache.put(s.getSeason(), s));
+                timed("loadSeasons", this::loadSeasons);
                 
-                loadCastaways();
-                castawayRepository.findAll().forEach(c -> castawayCache.put(c.getJson_id(), c));
+                timed("loadCastaways", this::loadCastaways);
                 
-                loadCastawayPerformances();
+                timed("loadCastawayPerformances", this::loadCastawayPerformances);
                 castawayPerformanceRepository.findAll().forEach(p -> 
                     perfCache.put(p.getSeason().getSeason() + ":" + p.getCastaway().getJson_id(), p));
                 
-                loadTribes();
+                timed("loadTribes", this::loadTribes);
                 tribeRepository.findAll().forEach(t -> tribeByKeyCache.put(t.getSeason().getSeason() + ":" + t.getName(), t));
                 
-                loadEpisodes();
+                timed("loadEpisodes", this::loadEpisodes);
                 episodeRepository.findAll().forEach(e -> episodeCache.put(e.getId(), e));
                 
-                updateSeasonEpisodeCounts();
+                timed("updateSeasonEpisodeCounts", this::updateSeasonEpisodeCounts);
                 
-                loadChallenges();
+                timed("loadChallenges", this::loadChallenges);
                 challengeRepository.findAll().forEach(c ->
                     challengeByKey.put(c.getSeason().getSeason() + ":" + c.getChallenge_id(), c)
                 );
-                loadTribal();
+                timed("loadTribal", this::loadTribal);
                 tribalRepository.findAll().forEach(t -> 
                     tribalByKey.put(t.getEpisode().getSeason().getSeason() + ":" + t.getEpisode().getEpisodeNumber() + ":" + t.getBootOrder(), t));
                 
-                loadTribeMapping();
-                loadVoteRounds();
-                loadChallengePerformances();
-                loadVotes();
-                loadJuryVotes();
-                loadJourneys();
-                loadBoots();
-                loadAdvantageMovements();
+                timed("loadTribeMapping", this::loadTribeMapping);
+                timed("loadVoteRounds", this::loadVoteRounds);
+                timed("loadChallengePerformances", this::loadChallengePerformances);
+                timed("loadVotes", this::loadVotes);
+                timed("loadJuryVotes", this::loadJuryVotes);
+                timed("loadJourneys", this::loadJourneys);
+                timed("loadBoots", this::loadBoots);
+                timed("loadAdvantageMovements", this::loadAdvantageMovements);
                 System.out.println("[GAME DATA] ✓ Complete\n");
             } else {
                 System.out.println("[GAME DATA] Skipped - loading from existing database");
@@ -224,7 +227,7 @@ public class DataLoader implements CommandLineRunner {
             
             if (loadGroups) {
                 System.out.println("[GROUP DATA] Loading test groups...");
-                seedPointCalcTestData();
+                timed("seedPointCalcTestData", this::seedPointCalcTestData);
                 System.out.println("[GROUP DATA] ✓ Complete\n");
             } else {
                 System.out.println("[GROUP DATA] Skipped\n");
@@ -259,6 +262,14 @@ public class DataLoader implements CommandLineRunner {
             e.printStackTrace();
             throw e;
         }
+    }
+
+    private void timed(String name, TimedStep step) throws Exception {
+        long start = System.currentTimeMillis();
+        step.run();
+        long elapsedMs = System.currentTimeMillis() - start;
+        double elapsedSeconds = elapsedMs / 1000.0;
+        System.out.printf(Locale.US, "  [TIMER] %s took %.3f s (%d ms)%n", name, elapsedSeconds, elapsedMs);
     }
     
     private void clearAllData() {
@@ -327,7 +338,7 @@ public class DataLoader implements CommandLineRunner {
         for (int i = 0; i < entities.size(); i++) {
             entityManager.persist(entities.get(i));
             
-            if (i > 0 && i % BATCH_SIZE == 0) {
+            if ((i + 1) % BATCH_SIZE == 0) {
                 entityManager.flush();
                 entityManager.clear();
             }
