@@ -91,6 +91,8 @@ jobs:
           echo "IMAGE_URI=${IMAGE_URI}" >> "$GITHUB_ENV"
 
       - name: Deploy to Cloud Run
+        id: deploy
+        continue-on-error: true
         env:
           PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
           SPRING_DATASOURCE_URL: ${{ secrets.SPRING_DATASOURCE_URL }}
@@ -116,3 +118,27 @@ jobs:
             --port 8080 \
             --env-vars-file cloudrun-env.yaml \
             --quiet
+
+      - name: Show Cloud Run error logs on deploy failure
+        if: steps.deploy.outcome == 'failure'
+        env:
+          PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+        run: |
+          REVISION="$(gcloud run revisions list \
+            --service "${SERVICE}" \
+            --region "${REGION}" \
+            --project "${PROJECT_ID}" \
+            --sort-by=~metadata.creationTimestamp \
+            --limit=1 \
+            --format='value(metadata.name)')"
+
+          echo "Latest revision: ${REVISION}"
+          echo "Recent ERROR logs from that revision:"
+
+          gcloud logging read \
+            "resource.type=cloud_run_revision AND resource.labels.service_name=${SERVICE} AND resource.labels.revision_name=${REVISION} AND severity>=ERROR" \
+            --project "${PROJECT_ID}" \
+            --limit=50 \
+            --format='value(timestamp,textPayload,jsonPayload.message)'
+
+          exit 1
