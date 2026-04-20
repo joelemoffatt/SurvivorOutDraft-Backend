@@ -44,6 +44,40 @@ jobs:
         with:
           project_id: ${{ secrets.GCP_PROJECT_ID }}
 
+      - name: Validate required deploy inputs
+        env:
+          PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+          REGION: ${{ secrets.GCP_REGION }}
+          REPOSITORY: ${{ secrets.ARTIFACT_REGISTRY_REPO }}
+          SERVICE: ${{ secrets.CLOUD_RUN_SERVICE }}
+          SPRING_DATASOURCE_URL: ${{ secrets.SPRING_DATASOURCE_URL }}
+          SPRING_DATASOURCE_USERNAME: ${{ secrets.SPRING_DATASOURCE_USERNAME }}
+          SPRING_DATASOURCE_PASSWORD: ${{ secrets.SPRING_DATASOURCE_PASSWORD }}
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
+          VIVIDA_CORS_ALLOWED_ORIGIN_PATTERNS: ${{ secrets.VIVIDA_CORS_ALLOWED_ORIGIN_PATTERNS }}
+        run: |
+          missing=0
+          for key in PROJECT_ID REGION REPOSITORY SERVICE SPRING_DATASOURCE_URL SPRING_DATASOURCE_USERNAME SPRING_DATASOURCE_PASSWORD JWT_SECRET VIVIDA_CORS_ALLOWED_ORIGIN_PATTERNS; do
+            if [[ -z "${!key}" ]]; then
+              echo "Missing required secret/value: $key"
+              missing=1
+            fi
+          done
+          if [[ "$missing" -ne 0 ]]; then
+            exit 1
+          fi
+
+          echo "Deploy target: project=$PROJECT_ID region=$REGION service=$SERVICE repo=$REPOSITORY"
+
+      - name: Validate GCP project and repository
+        env:
+          PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+          REGION: ${{ secrets.GCP_REGION }}
+          REPOSITORY: ${{ secrets.ARTIFACT_REGISTRY_REPO }}
+        run: |
+          gcloud projects describe "$PROJECT_ID" --format='value(projectId)'
+          gcloud artifacts repositories describe "$REPOSITORY" --location "$REGION" --project "$PROJECT_ID" --format='value(name)'
+
       - name: Configure Docker auth for Artifact Registry
         run: gcloud auth configure-docker "${{ secrets.GCP_REGION }}-docker.pkg.dev" --quiet
 
