@@ -66,6 +66,10 @@ gcloud projects add-iam-policy-binding "$GCP_PROJECT_ID" \
 gcloud projects add-iam-policy-binding "$GCP_PROJECT_ID" \
   --member="serviceAccount:$GCP_SA_EMAIL" \
   --role="roles/iam.serviceAccountUser"
+
+gcloud projects add-iam-policy-binding "$GCP_PROJECT_ID" \
+  --member="serviceAccount:$GCP_SA_EMAIL" \
+  --role="roles/logging.viewer"
 ```
 
 ## 2. Configure Workload Identity Federation (keyless auth)

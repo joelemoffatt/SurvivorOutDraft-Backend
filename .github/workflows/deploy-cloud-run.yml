@@ -139,6 +139,7 @@ jobs:
             "resource.type=cloud_run_revision AND resource.labels.service_name=${SERVICE} AND resource.labels.revision_name=${REVISION} AND severity>=ERROR" \
             --project "${PROJECT_ID}" \
             --limit=50 \
-            --format='value(timestamp,textPayload,jsonPayload.message)'
+            --format='value(timestamp,textPayload,jsonPayload.message)' || \
+            echo "Could not read logs. Grant roles/logging.viewer to the deploy service account."
 
           exit 1
