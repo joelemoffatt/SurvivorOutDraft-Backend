@@ -16,6 +16,11 @@ public class FlywayConfig {
     }
 
     private static void migrateDatabase(Environment environment) throws BeansException {
+        boolean flywayEnabled = environment.getProperty("spring.flyway.enabled", Boolean.class, true);
+        if (!flywayEnabled) {
+            return;
+        }
+
         String url = environment.getProperty("spring.datasource.url");
         String username = environment.getProperty("spring.datasource.username");
         String password = environment.getProperty("spring.datasource.password");
