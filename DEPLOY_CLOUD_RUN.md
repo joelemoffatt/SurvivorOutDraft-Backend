@@ -44,7 +44,7 @@ Run these commands once:
 
 ```bash
 gcloud config set project "$GCP_PROJECT_ID"
-gcloud services enable run.googleapis.com artifactregistry.googleapis.com iam.googleapis.com cloudbuild.googleapis.com
+gcloud services enable run.googleapis.com artifactregistry.googleapis.com iam.googleapis.com cloudbuild.googleapis.com cloudresourcemanager.googleapis.com
 
 export GCP_SA_EMAIL="$GCP_SA_NAME@$GCP_PROJECT_ID.iam.gserviceaccount.com"
 

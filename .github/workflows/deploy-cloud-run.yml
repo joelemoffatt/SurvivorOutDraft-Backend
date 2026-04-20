@@ -69,13 +69,12 @@ jobs:
 
           echo "Deploy target: project=$PROJECT_ID region=$REGION service=$SERVICE repo=$REPOSITORY"
 
-      - name: Validate GCP project and repository
+      - name: Validate Artifact Registry repository
         env:
           PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
           REGION: ${{ secrets.GCP_REGION }}
           REPOSITORY: ${{ secrets.ARTIFACT_REGISTRY_REPO }}
         run: |
-          gcloud projects describe "$PROJECT_ID" --format='value(projectId)'
           gcloud artifacts repositories describe "$REPOSITORY" --location "$REGION" --project "$PROJECT_ID" --format='value(name)'
 
       - name: Configure Docker auth for Artifact Registry
