@@ -67,6 +67,16 @@ jobs:
             exit 1
           fi
 
+          if [[ "$SPRING_DATASOURCE_URL" != jdbc:postgresql://* ]]; then
+            echo "SPRING_DATASOURCE_URL must start with jdbc:postgresql://"
+            exit 1
+          fi
+
+          if [[ "$SPRING_DATASOURCE_URL" == *\"* || "$SPRING_DATASOURCE_URL" == *\'* ]]; then
+            echo "SPRING_DATASOURCE_URL appears to include quote characters. Save raw value without wrapping quotes in GitHub secret."
+            exit 1
+          fi
+
           echo "Deploy target: project=$PROJECT_ID region=$REGION service=$SERVICE repo=$REPOSITORY"
 
       - name: Validate Artifact Registry repository
@@ -105,6 +115,10 @@ jobs:
           SPRING_DATASOURCE_URL: "${SPRING_DATASOURCE_URL}"
           SPRING_DATASOURCE_USERNAME: "${SPRING_DATASOURCE_USERNAME}"
           SPRING_DATASOURCE_PASSWORD: "${SPRING_DATASOURCE_PASSWORD}"
+          SPRING_DATASOURCE_HIKARI_CONNECTION_TIMEOUT: "10000"
+          SPRING_DATASOURCE_HIKARI_VALIDATION_TIMEOUT: "5000"
+          SPRING_DATASOURCE_HIKARI_INITIALIZATION_FAIL_TIMEOUT: "15000"
+          SPRING_FLYWAY_CONNECT_RETRIES: "1"
           JWT_SECRET: "${JWT_SECRET}"
           VIVIDA_CORS_ALLOWED_ORIGIN_PATTERNS: "${VIVIDA_CORS_ALLOWED_ORIGIN_PATTERNS}"
           EOF
