@@ -19,6 +19,7 @@ export CLOUD_RUN_SERVICE="survivor-outdraft-backend"
 export GCP_SA_NAME="github-actions-deployer"
 export GCP_SA_DISPLAY_NAME="GitHub Actions Cloud Run Deployer"
 export GITHUB_REPO="joelemoffatt/SurvivorOutDraft-Backend"
+export FRONTEND_GITHUB_REPO="joelemoffatt/survivor-outdraft-frontend"
 export WIF_POOL_ID="github-pool"
 export WIF_PROVIDER_ID="github-provider"
 
@@ -27,13 +28,13 @@ export SPRING_DATASOURCE_URL="jdbc:postgresql://..."
 export SPRING_DATASOURCE_USERNAME="..."
 export SPRING_DATASOURCE_PASSWORD="..."
 export JWT_SECRET="..."
-export VIVIDA_CORS_ALLOWED_ORIGIN_PATTERNS="https://your-frontend.example.com"
+export VIVIDA_CORS_ALLOWED_ORIGIN_PATTERNS="https://project-3a4e8cbe-52bf-4e46-9e9.web.app"
 ```
 
 Optional check to confirm everything is set:
 
 ```bash
-for v in GCP_PROJECT_ID GCP_REGION ARTIFACT_REGISTRY_REPO CLOUD_RUN_SERVICE GCP_SA_NAME GITHUB_REPO WIF_POOL_ID WIF_PROVIDER_ID SPRING_DATASOURCE_URL SPRING_DATASOURCE_USERNAME SPRING_DATASOURCE_PASSWORD JWT_SECRET VIVIDA_CORS_ALLOWED_ORIGIN_PATTERNS; do
+for v in GCP_PROJECT_ID GCP_REGION ARTIFACT_REGISTRY_REPO CLOUD_RUN_SERVICE GCP_SA_NAME GITHUB_REPO FRONTEND_GITHUB_REPO  WIF_POOL_ID WIF_PROVIDER_ID SPRING_DATASOURCE_URL SPRING_DATASOURCE_USERNAME SPRING_DATASOURCE_PASSWORD JWT_SECRET VIVIDA_CORS_ALLOWED_ORIGIN_PATTERNS; do
   [[ -z "${!v}" ]] && echo "Missing: $v"
 done
 ```
@@ -89,14 +90,29 @@ gcloud iam workload-identity-pools providers create-oidc "$WIF_PROVIDER_ID" \
   --display-name="GitHub Provider" \
   --issuer-uri="https://token.actions.githubusercontent.com" \
   --attribute-mapping="google.subject=assertion.sub,attribute.actor=assertion.actor,attribute.repository=assertion.repository" \
-  --attribute-condition="assertion.repository=='$GITHUB_REPO'"
+  --attribute-condition="assertion.repository=='$GITHUB_REPO' || assertion.repository=='$FRONTEND_GITHUB_REPO'"
 
 gcloud iam service-accounts add-iam-policy-binding "$GCP_SA_EMAIL" \
   --project="$GCP_PROJECT_ID" \
   --role="roles/iam.workloadIdentityUser" \
   --member="principalSet://iam.googleapis.com/projects/$GCP_PROJECT_NUMBER/locations/global/workloadIdentityPools/$WIF_POOL_ID/attribute.repository/$GITHUB_REPO"
 
+gcloud iam service-accounts add-iam-policy-binding "$GCP_SA_EMAIL" \
+  --project="$GCP_PROJECT_ID" \
+  --role="roles/iam.workloadIdentityUser" \
+  --member="principalSet://iam.googleapis.com/projects/$GCP_PROJECT_NUMBER/locations/global/workloadIdentityPools/$WIF_POOL_ID/attribute.repository/$FRONTEND_GITHUB_REPO"
+
 export GCP_WORKLOAD_IDENTITY_PROVIDER="projects/$GCP_PROJECT_NUMBER/locations/global/workloadIdentityPools/$WIF_POOL_ID/providers/$WIF_PROVIDER_ID"
+```
+
+If the provider already exists, update it with the same multi-repo condition:
+
+```bash
+gcloud iam workload-identity-pools providers update-oidc "$WIF_PROVIDER_ID" \
+  --project="$GCP_PROJECT_ID" \
+  --location="global" \
+  --workload-identity-pool="$WIF_POOL_ID" \
+  --attribute-condition="assertion.repository=='$GITHUB_REPO' || assertion.repository=='$FRONTEND_GITHUB_REPO'"
 ```
 
 You no longer need service account key creation (`gcloud iam service-accounts keys create ...`).

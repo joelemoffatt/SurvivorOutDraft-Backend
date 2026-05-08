@@ -81,12 +81,16 @@ public class DataLoader implements CommandLineRunner {
 
     @Value("${vivida.dataloader.load-game-data:true}")
     private boolean loadGameData;
-    
+
     @Value("${vivida.dataloader.load-users:true}")
     private boolean loadUsers;
-    
+
     @Value("${vivida.dataloader.load-groups:true}")
     private boolean loadGroups;
+
+    /** When true: skip clearing game data and only insert records from delta/ folder. */
+    @Value("${vivida.dataloader.incremental:false}")
+    private boolean incrementalMode;
     
     // Map vote_round_id to (season, episode, boot_order, vote_order)
     private final Map<Integer, String> voteRoundIdToKey = new HashMap<>();
@@ -123,7 +127,11 @@ public class DataLoader implements CommandLineRunner {
 
     private ObjectMapper mapper = new ObjectMapper();
     private static final String DATA_PATH = "/Users/joelmoffatt/VSCode/SurvivorOutDraft/survivoR/data/class-entities/";
+    private static final String DELTA_PATH = DATA_PATH + "delta/";
     private static final int BATCH_SIZE = 100;
+
+    /** Switches between full and delta paths during a run. */
+    private String activeDataPath = DATA_PATH;
     
     // Fail counters
     private int totalSeasonFails = 0;
@@ -143,9 +151,9 @@ public class DataLoader implements CommandLineRunner {
     private Map<String, Tribal> tribalByKey = new HashMap<>();  // key: "seasonNum:episodeNum:bootOrder"
 
     private List<Map<String, Object>> loadJsonFile(String filename) throws Exception {
-        File file = new File(DATA_PATH + filename);
+        File file = new File(activeDataPath + filename);
         if (!file.exists()) {
-            System.out.println("⚠  " + filename + " not found");
+            System.out.println("⚠  " + filename + " not found at " + activeDataPath);
             return new ArrayList<>();
         }
         List<Map<String, Object>> data = mapper.readValue(file, mapper.getTypeFactory().constructCollectionType(List.class, Map.class));
@@ -163,44 +171,111 @@ public class DataLoader implements CommandLineRunner {
         return data;
     }
 
+    /** Pre-populate all lookup caches from the existing database (used in incremental mode and when loadGameData=false). */
+    private void populateCachesFromDatabase() {
+        System.out.println("  Populating caches from existing database...");
+        seasonRepository.findAll().forEach(s -> seasonCache.put(s.getSeason(), s));
+        castawayRepository.findAll().forEach(c -> castawayCache.put(c.getJson_id(), c));
+        castawayPerformanceRepository.findAll().forEach(p ->
+            perfCache.put(p.getSeason().getSeason() + ":" + p.getCastaway().getJson_id(), p));
+        tribeRepository.findAll().forEach(t -> tribeByKeyCache.put(t.getSeason().getSeason() + ":" + t.getName(), t));
+        episodeRepository.findAll().forEach(e -> episodeCache.put(e.getId(), e));
+        challengeRepository.findAll().forEach(c ->
+            challengeByKey.put(c.getSeason().getSeason() + ":" + c.getChallenge_id(), c));
+        tribalRepository.findAll().forEach(t ->
+            tribalByKey.put(
+                t.getEpisode().getSeason().getSeason() + ":" +
+                t.getEpisode().getEpisodeNumber() + ":" +
+                t.getBootOrder(), t));
+        System.out.println("  ✓ Caches populated (" + seasonCache.size() + " seasons, " +
+            castawayCache.size() + " castaways, " + episodeCache.size() + " episodes)\n");
+    }
+
     @Override
     @Transactional
     public void run(String... args) throws Exception {
         System.out.println("\n" + "=".repeat(80));
         System.out.println("LOADING SURVIVOR DATA INTO DATABASE");
-        System.out.println("Flags: Game=" + loadGameData + " | Users=" + loadUsers + " | Groups=" + loadGroups);
+        System.out.println("Flags: Game=" + loadGameData + " | Users=" + loadUsers +
+            " | Groups=" + loadGroups + " | Incremental=" + incrementalMode);
         System.out.println("=".repeat(80) + "\n");
 
         long totalStart = System.currentTimeMillis();
         try {
             clearAllData();
-            
-            if (loadGameData) {
-                System.out.println("[GAME DATA] Loading...");
-                timed("loadSeasons", this::loadSeasons);
-                
-                timed("loadCastaways", this::loadCastaways);
-                
-                timed("loadCastawayPerformances", this::loadCastawayPerformances);
-                castawayPerformanceRepository.findAll().forEach(p -> 
+
+            if (loadGameData && incrementalMode) {
+                // ── INCREMENTAL MODE ──────────────────────────────────────────────────────
+                // Load caches from existing DB, then insert only the delta (new records).
+                activeDataPath = DELTA_PATH;
+                System.out.println("[GAME DATA] Incremental mode - loading delta from: " + DELTA_PATH);
+                populateCachesFromDatabase();
+
+                timed("loadSeasons (delta)", this::loadSeasons);
+                timed("loadCastaways (delta)", this::loadCastaways);
+                timed("loadCastawayPerformances (delta)", this::loadCastawayPerformances);
+                // Refresh perf cache to include any new entries just inserted
+                castawayPerformanceRepository.findAll().forEach(p ->
                     perfCache.put(p.getSeason().getSeason() + ":" + p.getCastaway().getJson_id(), p));
-                
+
+                timed("loadTribes (delta)", this::loadTribes);
+                tribeRepository.findAll().forEach(t -> tribeByKeyCache.put(t.getSeason().getSeason() + ":" + t.getName(), t));
+
+                timed("loadEpisodes (delta)", this::loadEpisodes);
+                episodeRepository.findAll().forEach(e -> episodeCache.put(e.getId(), e));
+
+                timed("updateSeasonEpisodeCounts", this::updateSeasonEpisodeCounts);
+
+                timed("loadChallenges (delta)", this::loadChallenges);
+                challengeRepository.findAll().forEach(c ->
+                    challengeByKey.put(c.getSeason().getSeason() + ":" + c.getChallenge_id(), c));
+
+                timed("loadTribal (delta)", this::loadTribal);
+                tribalRepository.findAll().forEach(t ->
+                    tribalByKey.put(
+                        t.getEpisode().getSeason().getSeason() + ":" +
+                        t.getEpisode().getEpisodeNumber() + ":" +
+                        t.getBootOrder(), t));
+
+                timed("loadTribeMapping (delta)", this::loadTribeMapping);
+                timed("loadVoteRounds (delta)", this::loadVoteRounds);
+                timed("loadChallengePerformances (delta)", this::loadChallengePerformances);
+                timed("loadVotes (delta)", this::loadVotes);
+                timed("loadJuryVotes (delta)", this::loadJuryVotes);
+                timed("loadJourneys (delta)", this::loadJourneys);
+                timed("loadBoots (delta)", this::loadBoots);
+                timed("loadAdvantageMovements (delta)", this::loadAdvantageMovements);
+                System.out.println("[GAME DATA] ✓ Incremental load complete\n");
+
+            } else if (loadGameData) {
+                // ── FULL RELOAD ───────────────────────────────────────────────────────────
+                activeDataPath = DATA_PATH;
+                System.out.println("[GAME DATA] Full reload from: " + DATA_PATH);
+                timed("loadSeasons", this::loadSeasons);
+                timed("loadCastaways", this::loadCastaways);
+                timed("loadCastawayPerformances", this::loadCastawayPerformances);
+                castawayPerformanceRepository.findAll().forEach(p ->
+                    perfCache.put(p.getSeason().getSeason() + ":" + p.getCastaway().getJson_id(), p));
+
                 timed("loadTribes", this::loadTribes);
                 tribeRepository.findAll().forEach(t -> tribeByKeyCache.put(t.getSeason().getSeason() + ":" + t.getName(), t));
-                
+
                 timed("loadEpisodes", this::loadEpisodes);
                 episodeRepository.findAll().forEach(e -> episodeCache.put(e.getId(), e));
-                
+
                 timed("updateSeasonEpisodeCounts", this::updateSeasonEpisodeCounts);
-                
+
                 timed("loadChallenges", this::loadChallenges);
                 challengeRepository.findAll().forEach(c ->
-                    challengeByKey.put(c.getSeason().getSeason() + ":" + c.getChallenge_id(), c)
-                );
+                    challengeByKey.put(c.getSeason().getSeason() + ":" + c.getChallenge_id(), c));
+
                 timed("loadTribal", this::loadTribal);
-                tribalRepository.findAll().forEach(t -> 
-                    tribalByKey.put(t.getEpisode().getSeason().getSeason() + ":" + t.getEpisode().getEpisodeNumber() + ":" + t.getBootOrder(), t));
-                
+                tribalRepository.findAll().forEach(t ->
+                    tribalByKey.put(
+                        t.getEpisode().getSeason().getSeason() + ":" +
+                        t.getEpisode().getEpisodeNumber() + ":" +
+                        t.getBootOrder(), t));
+
                 timed("loadTribeMapping", this::loadTribeMapping);
                 timed("loadVoteRounds", this::loadVoteRounds);
                 timed("loadChallengePerformances", this::loadChallengePerformances);
@@ -211,18 +286,8 @@ public class DataLoader implements CommandLineRunner {
                 timed("loadAdvantageMovements", this::loadAdvantageMovements);
                 System.out.println("[GAME DATA] ✓ Complete\n");
             } else {
-                System.out.println("[GAME DATA] Skipped - loading from existing database");
-                // Still need to populate caches from existing data
-                seasonRepository.findAll().forEach(s -> seasonCache.put(s.getSeason(), s));
-                castawayRepository.findAll().forEach(c -> castawayCache.put(c.getJson_id(), c));
-                castawayPerformanceRepository.findAll().forEach(p -> 
-                    perfCache.put(p.getSeason().getSeason() + ":" + p.getCastaway().getJson_id(), p));
-                tribeRepository.findAll().forEach(t -> tribeByKeyCache.put(t.getSeason().getSeason() + ":" + t.getName(), t));
-                episodeRepository.findAll().forEach(e -> episodeCache.put(e.getId(), e));
-                challengeRepository.findAll().forEach(c ->
-                    challengeByKey.put(c.getSeason().getSeason() + ":" + c.getChallenge_id(), c));
-                tribalRepository.findAll().forEach(t -> 
-                    tribalByKey.put(t.getEpisode().getSeason().getSeason() + ":" + t.getEpisode().getEpisodeNumber() + ":" + t.getBootOrder(), t));
+                System.out.println("[GAME DATA] Skipped - loading caches from existing database");
+                populateCachesFromDatabase();
             }
             
             if (loadGroups) {
@@ -304,8 +369,8 @@ public class DataLoader implements CommandLineRunner {
             entityManager.flush();
         }
         
-        if (loadGameData) {
-            // Clear survivor data
+        if (loadGameData && !incrementalMode) {
+            // Clear survivor data (skipped in incremental mode — we only append new records).
             System.out.println("  - Clearing game data (seasons, castaways, episodes, etc.)...");
             // Clear many-to-many links so castaways can be deleted safely.
             entityManager.createNativeQuery("DELETE FROM user_favorite_castaways").executeUpdate();
@@ -325,8 +390,10 @@ public class DataLoader implements CommandLineRunner {
             castawayRepository.deleteAllInBatch();
             seasonRepository.deleteAllInBatch();
             entityManager.flush();
+        } else if (loadGameData) {
+            System.out.println("  - Incremental mode: skipping game data clear (appending delta only)");
         }
-        
+
         System.out.println("✓ Data cleared\n");
     }
     
@@ -531,12 +598,19 @@ public class DataLoader implements CommandLineRunner {
 
     private void updateSeasonEpisodeCounts() {
         System.out.println("Updating season episode counts...");
+        // Count from the in-memory cache — avoids N remote DB queries (one per season).
+        Map<Integer, Long> countBySeason = new HashMap<>();
+        for (Episode episode : episodeCache.values()) {
+            if (episode.getSeason() != null) {
+                countBySeason.merge(episode.getSeason().getSeason(), 1L, Long::sum);
+            }
+        }
         List<Season> seasons = seasonRepository.findAll();
         for (Season season : seasons) {
-            long episodeCount = episodeRepository.findBySeasonId(season.getSeason()).size();
+            long episodeCount = countBySeason.getOrDefault(season.getSeason(), 0L);
             season.setEpisodesNumber((int) episodeCount);
-            seasonRepository.save(season);
         }
+        seasonRepository.saveAll(seasons);
         System.out.println("✓ Updated episode counts for " + seasons.size() + " seasons\n");
     }
 
@@ -563,7 +637,7 @@ public class DataLoader implements CommandLineRunner {
             
             Integer episodeNum = getInt(item, "episode");
             if (episodeNum != null) {
-                Episode episode = episodeRepository.findById(seasonNum * 1000 + episodeNum).orElse(null);
+                Episode episode = episodeCache.get(seasonNum * 1000 + episodeNum);
                 challenge.setEpisode(episode);
             }
 
@@ -603,7 +677,7 @@ public class DataLoader implements CommandLineRunner {
                 continue;
             }
             
-            Episode episode = episodeRepository.findById(seasonNum * 1000 + episodeNum).orElse(null);
+            Episode episode = episodeCache.get(seasonNum * 1000 + episodeNum);
             if (episode == null) {
                 episodeFails++;
                 System.out.println("  ⚠ Tribal: Episode not found - season=" + seasonNum + ", episode=" + episodeNum);
@@ -703,7 +777,7 @@ public class DataLoader implements CommandLineRunner {
                 continue;
             }
             
-            Episode episode = episodeRepository.findById(seasonNum * 1000 + episodeNum).orElse(null);
+            Episode episode = episodeCache.get(seasonNum * 1000 + episodeNum);
             if (episode == null) {
                 episodeFails++;
                 System.out.println("  ⚠ TribeMapping: Episode not found - season=" + seasonNum + ", episode=" + episodeNum);
@@ -900,7 +974,7 @@ public class DataLoader implements CommandLineRunner {
             Season season = seasonCache.get(seasonNum);
             if (season == null) continue;
             
-            Episode episode = episodeRepository.findById(seasonNum * 1000 + episodeNum).orElse(null);
+            Episode episode = episodeCache.get(seasonNum * 1000 + episodeNum);
             if (episode == null) continue;
 
             Castaway castaway = castawayCache.getOrDefault(castawayId, null);
@@ -941,7 +1015,7 @@ public class DataLoader implements CommandLineRunner {
                 continue;
             }
 
-            Episode episode = episodeRepository.findById(seasonNum * 1000 + episodeNum).orElse(null);
+            Episode episode = episodeCache.get(seasonNum * 1000 + episodeNum);
             if (episode == null) {
                 episodeFails++;
                 System.out.println("  ⚠ Boot: Episode not found - season=" + seasonNum + ", episode=" + episodeNum);
@@ -1747,7 +1821,7 @@ public class DataLoader implements CommandLineRunner {
                 playedForPerf = perfCache.get(seasonNum + ":" + playedForId);
             }
 
-            Episode episode = episodeRepository.findById(seasonNum * 1000 + episodeNum).orElse(null);
+            Episode episode = episodeCache.get(seasonNum * 1000 + episodeNum);
             if (episode == null) continue;
             
             AdvantageMovement movement = new AdvantageMovement();
