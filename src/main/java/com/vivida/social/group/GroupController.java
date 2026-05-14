@@ -4,6 +4,8 @@ import com.vivida.draft.DraftService;
 import com.vivida.draft.DraftStyle;
 import com.vivida.scoring.PointRule;
 import com.vivida.scoring.PointRuleRepository;
+import com.vivida.social.team.TeamDTO;
+import com.vivida.social.team.TeamService;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
@@ -29,19 +31,25 @@ public class GroupController {
     private final EpisodeRepository episodeRepository;
     private final SeasonRepository seasonRepository;
     private final PointRuleRepository pointRuleRepository;
+    private final GroupMemberService groupMemberService;
+    private final TeamService teamService;
 
     public GroupController(GroupService groupService,
                            DraftService draftService,
                            UserRepository userRepository,
                            EpisodeRepository episodeRepository,
                            SeasonRepository seasonRepository,
-                           PointRuleRepository pointRuleRepository) {
+                           PointRuleRepository pointRuleRepository,
+                           GroupMemberService groupMemberService,
+                           TeamService teamService) {
         this.groupService = groupService;
         this.draftService = draftService;
         this.userRepository = userRepository;
         this.episodeRepository = episodeRepository;
         this.seasonRepository = seasonRepository;
         this.pointRuleRepository = pointRuleRepository;
+        this.groupMemberService = groupMemberService;
+        this.teamService = teamService;
     }
 
     @GetMapping
@@ -55,6 +63,20 @@ public class GroupController {
     public GroupDTO getGroupById(@PathVariable Integer id) {
         Group group = groupService.getGroupById(id);
         return GroupDTO.fromEntity(group, pointRuleRepository.findByGroupId(id));
+    }
+
+    @GetMapping("{id}/dashboard")
+    public GroupDashboardDTO getGroupDashboard(@PathVariable Integer id) {
+        Group group = groupService.getGroupById(id);
+        GroupDTO groupDTO = GroupDTO.fromEntity(group, pointRuleRepository.findByGroupId(id));
+
+        List<GroupMemberDTO> members = groupMemberService.getGroupMembersByGroupId(id).stream()
+                .map(GroupMemberDTO::new)
+                .collect(Collectors.toList());
+
+        List<TeamDTO> teams = teamService.getTeamDtosByGroupId(id);
+
+        return new GroupDashboardDTO(groupDTO, members, teams);
     }
 
     @GetMapping("admin/{adminId}")

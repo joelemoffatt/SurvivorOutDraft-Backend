@@ -1,6 +1,10 @@
 package com.vivida.social.team;
 
+import com.vivida.scoring.TeamCastawayScoreEvent;
+
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * DTO for TeamCastaway response - breaks circular references
@@ -11,6 +15,7 @@ public class TeamCastawayDTO {
     public Integer points;
     public LocalDateTime draftedAt;
     public String placement;
+    public List<ScoreEventDTO> scoreEvents = new ArrayList<>();
     public CastawayPerformanceDTO castawayPerformance;
 
     public TeamCastawayDTO(TeamCastaway teamCastaway) {
@@ -20,6 +25,20 @@ public class TeamCastawayDTO {
         this.draftedAt = teamCastaway.getDraftedAt();
         this.placement = null;
         this.castawayPerformance = new CastawayPerformanceDTO(teamCastaway.getCastawayPerformance());
+    }
+
+    public static class ScoreEventDTO {
+        public Integer id;
+        public Integer episodeNumber;
+        public String eventLabel;
+        public Integer totalPoints;
+
+        public ScoreEventDTO(TeamCastawayScoreEvent event) {
+            this.id = event.getId();
+            this.episodeNumber = event.getEpisodeNumber();
+            this.eventLabel = event.getEventLabel();
+            this.totalPoints = event.getTotalPoints();
+        }
     }
 
     public static class CastawayPerformanceDTO {

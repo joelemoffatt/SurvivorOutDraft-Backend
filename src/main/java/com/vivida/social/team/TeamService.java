@@ -114,13 +114,35 @@ public class TeamService {
     }
 
     public List<TeamDTO> getTeamDtosByGroupId(int groupId) {
+        List<com.vivida.scoring.TeamCastawayScoreEvent> allEvents = scoreEventRepository.findByGroupId(groupId);
+        Map<Integer, List<com.vivida.scoring.TeamCastawayScoreEvent>> eventsByTcId = new HashMap<>();
+        for (com.vivida.scoring.TeamCastawayScoreEvent event : allEvents) {
+            Integer tcId = event.getTeamCastaway() != null ? event.getTeamCastaway().getId() : null;
+            if (tcId != null) {
+                eventsByTcId.computeIfAbsent(tcId, k -> new ArrayList<>()).add(event);
+            }
+        }
+
         return getTeamsByGroupId(groupId).stream()
                 .map(team -> {
                     TeamDTO dto = toTeamDTO(team);
                     populateRosterPlacement(team, dto);
+                    populateRosterScoreEvents(dto, eventsByTcId);
                     return dto;
                 })
                 .toList();
+    }
+
+    private void populateRosterScoreEvents(TeamDTO dto,
+            Map<Integer, List<com.vivida.scoring.TeamCastawayScoreEvent>> eventsByTcId) {
+        if (dto.roster == null) return;
+        for (TeamCastawayDTO castaway : dto.roster) {
+            castaway.scoreEvents = eventsByTcId.getOrDefault(castaway.id, List.of())
+                    .stream()
+                    .sorted(Comparator.comparingInt(e -> e.getEpisodeNumber() != null ? e.getEpisodeNumber() : 0))
+                    .map(TeamCastawayDTO.ScoreEventDTO::new)
+                    .toList();
+        }
     }
 
     public List<TeamDTO> getTeamDtosByUserId(int userId) {
