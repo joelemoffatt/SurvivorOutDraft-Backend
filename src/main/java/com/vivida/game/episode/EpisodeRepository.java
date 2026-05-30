@@ -56,4 +56,37 @@ public interface EpisodeRepository extends JpaRepository<Episode, Integer> {
 			@Param("seasonId") Integer seasonId,
 			@Param("episodeNumber") Integer episodeNumber
 	);
+
+	@EntityGraph(attributePaths = {
+			"challenges",
+			"challenges.challengesPerformances",
+			"challenges.challengesPerformances.castaway",
+			"challenges.challengesPerformances.castaway.castaway",
+			"journeys",
+			"journeys.castaway",
+			"journeys.castaway.castaway",
+			"advantageMovements",
+			"advantageMovements.castawayId",
+			"advantageMovements.castawayId.castaway",
+			"advantageMovements.playedForId",
+			"advantageMovements.playedForId.castaway",
+			"tribals",
+			"tribals.tribe",
+			"tribals.boot",
+			"tribals.boot.castaway",
+			"tribals.boot.castaway.castaway",
+			"tribals.votes",
+			"tribals.votes.votes",
+			"tribals.votes.votes.castaway",
+			"tribals.votes.votes.castaway.castaway",
+			"tribals.votes.votes.votedFor",
+			"tribals.votes.votes.votedFor.castaway",
+			"boots",
+			"boots.castaway",
+			"boots.castaway.castaway",
+			"boots.tribal",
+			"boots.tribal.tribe"
+	})
+	@Query("SELECT DISTINCT e FROM Episode e WHERE e.season.season = :seasonId ORDER BY e.episodeNumber ASC")
+	List<Episode> findAllEpisodeDetailsBySeasonId(@Param("seasonId") Integer seasonId);
 }

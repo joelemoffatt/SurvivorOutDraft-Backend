@@ -14,7 +14,7 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
-import java.util.List;
+import java.util.Set;
 
 @Entity
 @Setter
@@ -46,21 +46,21 @@ public class Episode {
 
     @JsonIgnore
     @OneToMany(mappedBy = "episode", cascade = CascadeType.ALL)
-    private List<Journey> journeys;
+    private Set<Journey> journeys;
 
     @JsonIgnore
     @OneToMany(mappedBy = "episode", cascade = CascadeType.ALL)
-    private List<AdvantageMovement> advantageMovements;
+    private Set<AdvantageMovement> advantageMovements;
 
     @JsonIgnore
     @OneToMany(mappedBy = "episode", cascade = CascadeType.ALL)
-    private List<Challenge> challenges;
+    private Set<Challenge> challenges;
 
     @JsonIgnore
     @OneToMany(mappedBy = "episode", cascade = CascadeType.ALL)
-    private List<Tribal> tribals;
+    private Set<Tribal> tribals;
 
     @JsonIgnore
     @OneToMany(mappedBy = "episode", cascade = CascadeType.ALL)
-    private List<Boot> boots; // All boots in this episode (voted and non-voted)
+    private Set<Boot> boots; // All boots in this episode (voted and non-voted)
 }

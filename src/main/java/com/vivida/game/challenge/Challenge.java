@@ -6,7 +6,7 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
-import java.util.List;
+import java.util.Set;
 
 import com.vivida.game.episode.Episode;
 import com.vivida.game.season.Season;
@@ -49,5 +49,5 @@ public class Challenge {
     private Boolean water;
 
     @OneToMany(mappedBy = "challenge", cascade = CascadeType.ALL)
-    private List<ChallengePerformance> challengesPerformances;
+    private Set<ChallengePerformance> challengesPerformances;
 }

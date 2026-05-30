@@ -28,6 +28,7 @@ import com.vivida.game.tribe.TribePerformanceGroupDto;
 import com.vivida.game.vote.Vote;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -72,7 +73,7 @@ public class EpisodeService {
 
     @Transactional(readOnly = true)
     public EpisodeDetailDto getEpisodeDetail(Integer seasonId, Integer episodeNumber) {
-        Episode episode = episodeRepository.findBySeasonAndEpisodeNumber(seasonId, episodeNumber)
+        Episode episode = episodeRepository.findEpisodeDetailBySeasonAndEpisodeNumber(seasonId, episodeNumber)
                 .orElseThrow(() -> new ResponseStatusException(
                         HttpStatus.NOT_FOUND,
                         "Episode not found for season " + seasonId + " and episode " + episodeNumber
@@ -86,6 +87,44 @@ public class EpisodeService {
                         (existing, replacement) -> existing
                 ));
 
+        List<JuryVote> juryVotes = juryVoteRepository.findByEpisodeId(episode.getId());
+        return buildEpisodeDetailDto(episode, tribeByCastawayPerformanceId, juryVotes);
+    }
+
+    @Transactional(readOnly = true)
+    public List<EpisodeDetailDto> getSeasonEpisodeDetails(Integer seasonId) {
+        List<Episode> episodes = episodeRepository.findAllEpisodeDetailsBySeasonId(seasonId);
+
+        List<Integer> episodeIds = episodes.stream().map(Episode::getId).toList();
+
+        Map<Integer, Map<Integer, String>> tribeByEpisodeAndPerf = tribeMappingRepository
+                .findByEpisodeIds(episodeIds)
+                .stream()
+                .collect(Collectors.groupingBy(
+                        tm -> tm.getEpisode().getId(),
+                        Collectors.toMap(
+                                tm -> tm.getCastawayPerformance().getId(),
+                                tm -> tm.getTribe() != null ? tm.getTribe().getName() : "Unknown Tribe",
+                                (a, b) -> a
+                        )
+                ));
+
+        Map<Integer, List<JuryVote>> juryVotesByEpisodeId = juryVoteRepository.findBySeasonId(seasonId)
+                .stream()
+                .collect(Collectors.groupingBy(jv -> jv.getEpisode().getId()));
+
+        return episodes.stream()
+                .map(episode -> buildEpisodeDetailDto(
+                        episode,
+                        tribeByEpisodeAndPerf.getOrDefault(episode.getId(), Map.of()),
+                        juryVotesByEpisodeId.getOrDefault(episode.getId(), List.of())
+                ))
+                .toList();
+    }
+
+    private EpisodeDetailDto buildEpisodeDetailDto(Episode episode,
+                                                    Map<Integer, String> tribeByCastawayPerformanceId,
+                                                    List<JuryVote> juryVotes) {
         List<ChallengeDetailDto> challengeDtos = toChallengeDtos(episode.getChallenges(), tribeByCastawayPerformanceId);
         List<JourneyDetailDto> journeyDtos = toJourneyDtos(episode.getJourneys());
         List<AdvantageMovementDetailDto> advantageDtos = toAdvantageDtos(episode.getAdvantageMovements());
@@ -99,32 +138,24 @@ public class EpisodeService {
                 .filter(bootOrder -> bootOrder != null)
                 .collect(Collectors.toCollection(HashSet::new));
         List<BootDetailDto> bootDtos = toBootDtos(episode.getBoots(), tribalBootOrders);
-        
-        // Get jury votes and final three ranking
-        List<JuryVote> juryVotes = juryVoteRepository.findByEpisodeId(episode.getId());
+
         List<JuryVoteDetailDto> juryVoteDtos = toJuryVoteDtos(juryVotes);
-        
-        // Separate final results boots (Lost fire, First, Second, Third) from other boots
+
         List<BootDetailDto> finalResultsBoots = bootDtos.stream()
                 .filter(boot -> isFinalResultEvent(boot.event()))
                 .toList();
-        
-        // Extract final three castaway IDs from jury votes (these are the finalists)
+
         Set<Integer> finalThreeCastawayIds = juryVotes.stream()
                 .map(jv -> jv.getVotedFor().getId())
                 .collect(Collectors.toSet());
-        
-        // Filter out final three from OTHER boots only (not from finale results)
+
         List<BootDetailDto> otherBoots = bootDtos.stream()
                 .filter(boot -> !isFinalResultEvent(boot.event()))
-                .filter(boot -> {
-                    // Find the boot entry for this castaway name
-                    return episode.getBoots().stream()
-                            .filter(b -> castawayShortName(b.getCastaway()).equals(boot.castawayName()))
-                            .noneMatch(b -> finalThreeCastawayIds.contains(b.getCastaway().getId()));
-                })
+                .filter(boot -> episode.getBoots().stream()
+                        .filter(b -> castawayShortName(b.getCastaway()).equals(boot.castawayName()))
+                        .noneMatch(b -> finalThreeCastawayIds.contains(b.getCastaway().getId())))
                 .toList();
-        
+
         List<FinalRankingDetailDto> finalRankingDtos = toFinalRankingDtos(juryVotes);
 
         return new EpisodeDetailDto(
@@ -154,7 +185,7 @@ public class EpisodeService {
     }
 
     private List<ChallengeDetailDto> toChallengeDtos(
-            List<Challenge> challenges,
+            Collection<Challenge> challenges,
             Map<Integer, String> tribeByCastawayPerformanceId
     ) {
         if (challenges == null) {
@@ -165,7 +196,7 @@ public class EpisodeService {
                 .sorted(Comparator.comparing(Challenge::getChallenge_number, Comparator.nullsLast(Integer::compareTo)))
                 .map(challenge -> {
                     Map<String, List<ChallengePerformanceRowDto>> grouped = new LinkedHashMap<>();
-                    List<ChallengePerformance> performances = challenge.getChallengesPerformances() == null
+                    Collection<ChallengePerformance> performances = challenge.getChallengesPerformances() == null
                             ? List.of()
                             : challenge.getChallengesPerformances();
                     if (performances.isEmpty() && challenge.getId() != null) {
@@ -208,7 +239,7 @@ public class EpisodeService {
                 .toList();
     }
 
-    private List<JourneyDetailDto> toJourneyDtos(List<Journey> journeys) {
+    private List<JourneyDetailDto> toJourneyDtos(Collection<Journey> journeys) {
         if (journeys == null) {
             return List.of();
         }
@@ -225,7 +256,7 @@ public class EpisodeService {
                 .toList();
     }
 
-    private List<AdvantageMovementDetailDto> toAdvantageDtos(List<AdvantageMovement> advantageMovements) {
+    private List<AdvantageMovementDetailDto> toAdvantageDtos(Collection<AdvantageMovement> advantageMovements) {
         if (advantageMovements == null) {
             return List.of();
         }
@@ -243,7 +274,7 @@ public class EpisodeService {
                 .toList();
     }
 
-    private List<TribalDetailDto> toTribalDtos(List<Tribal> tribals) {
+    private List<TribalDetailDto> toTribalDtos(Collection<Tribal> tribals) {
         if (tribals == null) {
             return List.of();
         }
@@ -318,7 +349,7 @@ public class EpisodeService {
         return normalized.equals("lostfire") || normalized.equals("lostfinalfire");
     }
 
-    private List<BootDetailDto> toBootDtos(List<Boot> boots, Set<Integer> tribalBootOrders) {
+    private List<BootDetailDto> toBootDtos(Collection<Boot> boots, Set<Integer> tribalBootOrders) {
         if (boots == null) {
             return List.of();
         }

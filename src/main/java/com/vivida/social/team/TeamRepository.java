@@ -7,6 +7,16 @@ import java.util.List;
 import java.util.Optional;
 
 public interface TeamRepository extends JpaRepository<Team, Integer> {
+    @EntityGraph(attributePaths = {
+            "user",
+            "group",
+            "group.season",
+            "group.latestEpisodeWatched",
+            "roster",
+            "roster.castawayPerformance",
+            "roster.castawayPerformance.season",
+            "roster.castawayPerformance.castaway"
+    })
     List<Team> findByGroupId(Integer groupId);
     List<Team> findByUserId(Integer userId);
 

@@ -6,7 +6,7 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
-import java.util.List;
+import java.util.Set;
 
 import com.vivida.game.tribal.Tribal;
 
@@ -26,7 +26,7 @@ public class VoteRound {
     private Tribal tribal;
 
     @OneToMany(mappedBy = "voteRound", cascade = CascadeType.ALL)
-    private List<Vote> votes;
+    private Set<Vote> votes;
     
     @Column(nullable = false)
     private Boolean isTie;

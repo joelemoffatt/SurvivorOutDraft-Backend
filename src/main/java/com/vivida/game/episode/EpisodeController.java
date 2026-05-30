@@ -34,6 +34,11 @@ public class EpisodeController {
         return episodeService.getEpisodeDetail(seasonId, episodeNumber);
     }
 
+    @GetMapping("detail/season")
+    public List<EpisodeDetailDto> getSeasonEpisodeDetails(@RequestParam Integer seasonId) {
+        return episodeService.getSeasonEpisodeDetails(seasonId);
+    }
+
     @GetMapping("{id}")
     public EpisodeDTO getEpisodeById(@PathVariable Integer id) {
         return new EpisodeDTO(episodeService.getEpisodeById(id));
