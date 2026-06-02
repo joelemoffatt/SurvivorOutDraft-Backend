@@ -217,7 +217,7 @@ public class DraftService {
         List<DraftPick> picks = new ArrayList<>();
 
         for (int pickNum = 1; pickNum <= totalPicks; pickNum++) {
-            int position = calculatePosition(pickNum, totalParticipants, draft.getStyle());
+            int position = calculatePosition(pickNum, totalParticipants, draft.getTeamSize(), draft.getStyle());
             DraftParticipant participant = participants.get(position);
             int round = (pickNum - 1) / totalParticipants;
 
@@ -499,7 +499,7 @@ public class DraftService {
     /**
      * Calculate which draft position (0-based) picks for a given pick number.
      */
-    private int calculatePosition(int pickNumber, int numPlayers, DraftStyle style) {
+    private int calculatePosition(int pickNumber, int numPlayers, int teamSize, DraftStyle style) {
         switch (style) {
             case SNAKE: {
                 int round = (pickNumber - 1) / numPlayers;
@@ -509,6 +509,8 @@ public class DraftService {
                     return numPlayers - 1 - ((pickNumber - 1) % numPlayers);
                 }
             }
+            case RIGGED:
+                return (pickNumber - 1) / teamSize;
             case ROUND_ROBIN:
             case LINEAR:
             default:

@@ -3,6 +3,7 @@ package com.vivida.scoring;
 import com.vivida.social.group.GroupRepository;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
@@ -27,10 +28,28 @@ public class AsyncScoringService {
     }
 
     @Async
-    @Transactional
     public void recalculateGroupScoresAsync(Integer groupId) {
+        try {
+            runScoringTransaction(groupId);
+        } finally {
+            clearGroupLoading(groupId);
+        }
+    }
+
+    @Transactional
+    public void runScoringTransaction(Integer groupId) {
+        groupRepository.findById(groupId).ifPresent(group ->
+            scoreProjectionService.recalculateGroupScores(group)
+        );
+    }
+
+    /**
+     * Clears the loading flag in its own independent transaction so it always
+     * commits even if the scoring transaction rolled back.
+     */
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void clearGroupLoading(Integer groupId) {
         groupRepository.findById(groupId).ifPresent(group -> {
-            scoreProjectionService.recalculateGroupScores(group);
             group.setLoading(false);
             group.setLoadingText(null);
             groupRepository.save(group);

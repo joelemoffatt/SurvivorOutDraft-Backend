@@ -5,6 +5,7 @@ import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+import org.hibernate.annotations.DynamicUpdate;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -18,6 +19,7 @@ import com.vivida.social.team.Team;
 
 @Entity
 @Table(name = "groups")
+@DynamicUpdate
 @Setter
 @Getter
 @AllArgsConstructor

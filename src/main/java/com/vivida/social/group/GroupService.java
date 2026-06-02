@@ -4,6 +4,8 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import com.vivida.draft.DraftStatus;
 import com.vivida.draft.DraftRepository;
@@ -14,6 +16,7 @@ import com.vivida.game.episode.Episode;
 import com.vivida.game.episode.EpisodeRepository;
 import com.vivida.game.season.Season;
 import com.vivida.game.season.SeasonRepository;
+import com.vivida.scoring.AsyncScoringService;
 import com.vivida.scoring.GroupScoreCalculationRunRepository;
 import com.vivida.scoring.PointRule;
 import com.vivida.scoring.PointRuleRepository;
@@ -45,6 +48,7 @@ public class GroupService {
     private final TeamCastawayScoreEventRepository teamCastawayScoreEventRepository;
     private final GroupScoreCalculationRunRepository groupScoreCalculationRunRepository;
     private final NotificationService notificationService;
+    private final AsyncScoringService asyncScoringService;
 
     public GroupService(GroupRepository groupRepository,
             GroupMemberRepository groupMemberRepository,
@@ -58,7 +62,8 @@ public class GroupService {
             PointRuleRepository pointRuleRepository,
             TeamCastawayScoreEventRepository teamCastawayScoreEventRepository,
             GroupScoreCalculationRunRepository groupScoreCalculationRunRepository,
-            NotificationService notificationService) {
+            NotificationService notificationService,
+            AsyncScoringService asyncScoringService) {
         this.groupRepository = groupRepository;
         this.groupMemberRepository = groupMemberRepository;
         this.teamRepository = teamRepository;
@@ -72,6 +77,7 @@ public class GroupService {
         this.teamCastawayScoreEventRepository = teamCastawayScoreEventRepository;
         this.groupScoreCalculationRunRepository = groupScoreCalculationRunRepository;
         this.notificationService = notificationService;
+        this.asyncScoringService = asyncScoringService;
     }
 
     @Transactional
@@ -255,6 +261,22 @@ public class GroupService {
 
         group.setLatestEpisodeWatched(episode);
         applyStatusFromLatestWatchedEpisode(group, episode);
+
+        if (group.getStatus() == GroupStatus.ACTIVE || group.getStatus() == GroupStatus.COMPLETED) {
+            group.setLoading(true);
+            group.setLoadingText("Recalculating scores...");
+            Group updated = groupRepository.save(group);
+            notificationService.createEpisodeScored(updated, episode);
+            final Integer gId = groupId;
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    asyncScoringService.recalculateGroupScoresAsync(gId);
+                }
+            });
+            return updated;
+        }
+
         Group updated = groupRepository.save(group);
         scoreProjectionService.recalculateGroupScores(updated);
         notificationService.createEpisodeScored(updated, episode);
@@ -270,6 +292,21 @@ public class GroupService {
 
         Group group = getGroupById(groupId);
         group.setFirstScoringEpisodeNumber(firstScoringEpisodeNumber);
+
+        if (group.getStatus() == GroupStatus.ACTIVE || group.getStatus() == GroupStatus.COMPLETED) {
+            group.setLoading(true);
+            group.setLoadingText("Recalculating scores...");
+            Group updated = groupRepository.save(group);
+            final Integer gId = groupId;
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    asyncScoringService.recalculateGroupScoresAsync(gId);
+                }
+            });
+            return updated;
+        }
+
         Group updated = groupRepository.save(group);
         scoreProjectionService.recalculateGroupScores(updated);
         return updated;
@@ -361,6 +398,23 @@ public class GroupService {
             }
             draftRepository.save(draft);
         });
+
+        if (updated.getStatus() == GroupStatus.ACTIVE || updated.getStatus() == GroupStatus.COMPLETED) {
+            updated.setLoading(true);
+            updated.setLoadingText("Recalculating scores...");
+            updated = groupRepository.save(updated);
+            if (latestWatchedEpisode != null) {
+                notificationService.createEpisodeScored(updated, latestWatchedEpisode);
+            }
+            final Group finalUpdated = updated;
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    asyncScoringService.recalculateGroupScoresAsync(finalUpdated.getId());
+                }
+            });
+            return updated;
+        }
 
         scoreProjectionService.recalculateGroupScores(updated);
         if (latestWatchedEpisode != null) {
