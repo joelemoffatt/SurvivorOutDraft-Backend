@@ -32,4 +32,6 @@ public interface GroupMemberRepository extends JpaRepository<GroupMember, Intege
     Optional<GroupMember> findByGroupIdAndUserIdAndStatus(Integer groupId, Integer userId, MembershipStatus status);
 
     boolean existsByGroupIdAndUserId(Integer groupId, Integer userId);
+
+    List<GroupMember> findByGroupIdAndStatus(Integer groupId, MembershipStatus status);
 }

@@ -17,6 +17,7 @@ import com.vivida.game.season.SeasonRepository;
 import com.vivida.scoring.PointRule;
 import com.vivida.scoring.PointRuleRepository;
 import com.vivida.scoring.RuleType;
+import com.vivida.notification.NotificationService;
 import com.vivida.scoring.ScoreProjectionService;
 import com.vivida.scoring.TeamCastawayScoreEventRepository;
 import com.vivida.social.team.Team;
@@ -41,6 +42,7 @@ public class GroupService {
     private final ScoreProjectionService scoreProjectionService;
     private final PointRuleRepository pointRuleRepository;
     private final TeamCastawayScoreEventRepository teamCastawayScoreEventRepository;
+    private final NotificationService notificationService;
 
     public GroupService(GroupRepository groupRepository,
             GroupMemberRepository groupMemberRepository,
@@ -52,7 +54,8 @@ public class GroupService {
             DraftRepository draftRepository,
             ScoreProjectionService scoreProjectionService,
             PointRuleRepository pointRuleRepository,
-            TeamCastawayScoreEventRepository teamCastawayScoreEventRepository) {
+            TeamCastawayScoreEventRepository teamCastawayScoreEventRepository,
+            NotificationService notificationService) {
         this.groupRepository = groupRepository;
         this.groupMemberRepository = groupMemberRepository;
         this.teamRepository = teamRepository;
@@ -64,6 +67,7 @@ public class GroupService {
         this.scoreProjectionService = scoreProjectionService;
         this.pointRuleRepository = pointRuleRepository;
         this.teamCastawayScoreEventRepository = teamCastawayScoreEventRepository;
+        this.notificationService = notificationService;
     }
 
     @Transactional
@@ -249,6 +253,7 @@ public class GroupService {
         applyStatusFromLatestWatchedEpisode(group, episode);
         Group updated = groupRepository.save(group);
         scoreProjectionService.recalculateGroupScores(updated);
+        notificationService.createEpisodeScored(updated, episode);
         return updated;
     }
 

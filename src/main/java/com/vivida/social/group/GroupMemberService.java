@@ -9,6 +9,7 @@ import com.vivida.auth.User;
 import com.vivida.auth.Role;
 import com.vivida.auth.UserRepository;
 import com.vivida.draft.DraftStatus;
+import com.vivida.notification.NotificationService;
 import com.vivida.social.team.Team;
 import com.vivida.social.team.TeamRepository;
 
@@ -22,15 +23,18 @@ public class GroupMemberService {
     private final UserRepository userRepository;
     private final GroupRepository groupRepository;
     private final TeamRepository teamRepository;
+    private final NotificationService notificationService;
 
-    public GroupMemberService(GroupMemberRepository groupMemberRepository, 
+    public GroupMemberService(GroupMemberRepository groupMemberRepository,
                              UserRepository userRepository,
                              GroupRepository groupRepository,
-                             TeamRepository teamRepository) {
+                             TeamRepository teamRepository,
+                             NotificationService notificationService) {
         this.groupMemberRepository = groupMemberRepository;
         this.userRepository = userRepository;
         this.groupRepository = groupRepository;
         this.teamRepository = teamRepository;
+        this.notificationService = notificationService;
     }
 
     public List<GroupMember> getAllGroupMembers() {
@@ -80,9 +84,10 @@ public class GroupMemberService {
         }
         groupMemberRepository.save(member);
         
-        // When a user accepts an invitation, create their team automatically
+        // When a user accepts an invitation, create their team and notify the group admin
         if (previousStatus == MembershipStatus.INVITED && status == MembershipStatus.ACCEPTED) {
             createTeamForMember(member);
+            notificationService.createInviteAccepted(member);
         }
     }
     
@@ -167,7 +172,9 @@ public class GroupMemberService {
         invitation.setUser(user);
         invitation.setStatus(MembershipStatus.INVITED);
         
-        return groupMemberRepository.save(invitation);
+        GroupMember saved = groupMemberRepository.save(invitation);
+        notificationService.createInviteReceived(saved, requestingUser);
+        return saved;
     }
 
     private void ensureDraftPendingForMemberChanges(Group group) {
