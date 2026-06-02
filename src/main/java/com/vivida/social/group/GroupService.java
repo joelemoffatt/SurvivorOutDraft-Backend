@@ -14,6 +14,7 @@ import com.vivida.game.episode.Episode;
 import com.vivida.game.episode.EpisodeRepository;
 import com.vivida.game.season.Season;
 import com.vivida.game.season.SeasonRepository;
+import com.vivida.scoring.GroupScoreCalculationRunRepository;
 import com.vivida.scoring.PointRule;
 import com.vivida.scoring.PointRuleRepository;
 import com.vivida.scoring.RuleType;
@@ -42,6 +43,7 @@ public class GroupService {
     private final ScoreProjectionService scoreProjectionService;
     private final PointRuleRepository pointRuleRepository;
     private final TeamCastawayScoreEventRepository teamCastawayScoreEventRepository;
+    private final GroupScoreCalculationRunRepository groupScoreCalculationRunRepository;
     private final NotificationService notificationService;
 
     public GroupService(GroupRepository groupRepository,
@@ -55,6 +57,7 @@ public class GroupService {
             ScoreProjectionService scoreProjectionService,
             PointRuleRepository pointRuleRepository,
             TeamCastawayScoreEventRepository teamCastawayScoreEventRepository,
+            GroupScoreCalculationRunRepository groupScoreCalculationRunRepository,
             NotificationService notificationService) {
         this.groupRepository = groupRepository;
         this.groupMemberRepository = groupMemberRepository;
@@ -67,6 +70,7 @@ public class GroupService {
         this.scoreProjectionService = scoreProjectionService;
         this.pointRuleRepository = pointRuleRepository;
         this.teamCastawayScoreEventRepository = teamCastawayScoreEventRepository;
+        this.groupScoreCalculationRunRepository = groupScoreCalculationRunRepository;
         this.notificationService = notificationService;
     }
 
@@ -421,7 +425,28 @@ public class GroupService {
         return pointRuleRepository.findByGroupId(groupId);
     }
 
+    @Transactional
     public void deleteGroupById(int id) {
-        groupRepository.deleteById(id);
+        Group group = getGroupById(id);
+
+        // 1. Delete notifications referencing this group (FK: notifications.group_id)
+        notificationService.deleteAllForGroup(id);
+
+        // 2. Delete score events and calculation runs (FK: group_id → groups)
+        teamCastawayScoreEventRepository.deleteByGroupId(id);
+        groupScoreCalculationRunRepository.deleteByGroupId(id);
+
+        // 3. Break the circular FK: groups.draft_id ↔ drafts.group_id
+        //    Null out the group's draft pointer so the drafts row can be deleted.
+        if (group.getDraft() != null) {
+            group.setDraft(null);
+            groupRepository.save(group);
+        }
+
+        // 4. Delete all drafts for this group (cascades to participants, picks, castaways)
+        draftRepository.findByGroupId(id).forEach(draft -> draftRepository.delete(draft));
+
+        // 5. Delete the group — cascades to members, teams, pointRules via CascadeType.ALL
+        groupRepository.delete(group);
     }
 }

@@ -11,4 +11,6 @@ public interface GroupScoreCalculationRunRepository extends JpaRepository<GroupS
     List<GroupScoreCalculationRun> findByGroupIdOrderByStartedAtDesc(Integer groupId);
     Optional<GroupScoreCalculationRun> findFirstByGroupIdOrderByStartedAtDesc(Integer groupId);
     List<GroupScoreCalculationRun> findByGroupIdAndStatus(Integer groupId, CalculationRunStatus status);
+
+    void deleteByGroupId(Integer groupId);
 }

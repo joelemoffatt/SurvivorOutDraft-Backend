@@ -10,6 +10,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -36,7 +37,7 @@ public class NotificationService {
         n.setGroup(invitation.getGroup());
         n.setType(NotificationType.INVITE_RECEIVED);
         n.setInvitationId(invitation.getId());
-        n.setCreatedAt(LocalDateTime.now());
+        n.setCreatedAt(LocalDateTime.now(ZoneOffset.UTC));
         notificationRepository.save(n);
     }
 
@@ -52,7 +53,7 @@ public class NotificationService {
         n.setActor(member.getUser());
         n.setGroup(member.getGroup());
         n.setType(NotificationType.INVITE_ACCEPTED);
-        n.setCreatedAt(LocalDateTime.now());
+        n.setCreatedAt(LocalDateTime.now(ZoneOffset.UTC));
         notificationRepository.save(n);
     }
 
@@ -73,7 +74,7 @@ public class NotificationService {
                     n.setGroup(group);
                     n.setEpisode(episode);
                     n.setType(NotificationType.EPISODE_SCORED);
-                    n.setCreatedAt(LocalDateTime.now());
+                    n.setCreatedAt(LocalDateTime.now(ZoneOffset.UTC));
                     return n;
                 })
                 .collect(Collectors.toList());
@@ -104,5 +105,19 @@ public class NotificationService {
     @Transactional
     public void markAllRead(Integer userId) {
         notificationRepository.markAllAsRead(userId);
+    }
+
+    @Transactional
+    public void deleteInviteNotification(Integer invitationId) {
+        if (invitationId != null) {
+            notificationRepository.deleteByInvitationId(invitationId);
+        }
+    }
+
+    @Transactional
+    public void deleteAllForGroup(Integer groupId) {
+        if (groupId != null) {
+            notificationRepository.deleteByGroupId(groupId);
+        }
     }
 }

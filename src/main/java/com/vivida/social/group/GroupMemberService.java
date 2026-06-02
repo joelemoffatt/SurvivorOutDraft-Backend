@@ -78,6 +78,7 @@ public class GroupMemberService {
                     "You can only update your own membership status");
         }
         MembershipStatus previousStatus = member.getStatus();
+        if (previousStatus == status) return;
         member.setStatus(status);
         if (status == MembershipStatus.ACCEPTED) {
             member.setLastAccessedAt(LocalDateTime.now());
@@ -87,6 +88,7 @@ public class GroupMemberService {
         // When a user accepts an invitation, create their team and notify the group admin
         if (previousStatus == MembershipStatus.INVITED && status == MembershipStatus.ACCEPTED) {
             createTeamForMember(member);
+            notificationService.deleteInviteNotification(id);
             notificationService.createInviteAccepted(member);
         }
     }
@@ -120,6 +122,7 @@ public class GroupMemberService {
 
         boolean isInvitee = member.getUser().getId().equals(requestingUserId);
         if (isInvitee) {
+            notificationService.deleteInviteNotification(id);
             groupMemberRepository.deleteById(id);
             return;
         }
