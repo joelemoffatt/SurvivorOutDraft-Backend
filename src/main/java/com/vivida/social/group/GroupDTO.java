@@ -10,6 +10,7 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 import java.util.Collections;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -27,7 +28,7 @@ public class GroupDTO {
     private Integer firstScoringEpisodeNumber;
     private EpisodeDTO latestEpisodeWatched;
     private GroupStatus status;
-    private LocalDateTime createdAt;
+    private String createdAt;
     private List<PointRuleDTO> pointRules;
 
     @Getter
@@ -77,9 +78,9 @@ public class GroupDTO {
         private DraftStatus status;
         private DraftStyle style;
         private Integer teamSize;
-        private LocalDateTime scheduledAt;
-        private LocalDateTime startedAt;
-        private LocalDateTime completedAt;
+        private String scheduledAt;
+        private String startedAt;
+        private String completedAt;
     }
 
     public static GroupDTO fromEntity(Group group) {
@@ -95,7 +96,7 @@ public class GroupDTO {
             dto.setLatestEpisodeWatched(epDTO);
         }
         dto.setStatus(group.getStatus());
-        dto.setCreatedAt(group.getCreatedAt());
+        dto.setCreatedAt(toUtcString(group.getCreatedAt()));
 
         Draft draft = group.getDraft();
         if (draft != null) {
@@ -104,9 +105,9 @@ public class GroupDTO {
             draftDTO.setStatus(draft.getStatus());
             draftDTO.setStyle(draft.getStyle());
             draftDTO.setTeamSize(draft.getTeamSize());
-            draftDTO.setScheduledAt(draft.getScheduledAt());
-            draftDTO.setStartedAt(draft.getStartedAt());
-            draftDTO.setCompletedAt(draft.getCompletedAt());
+            draftDTO.setScheduledAt(toUtcString(draft.getScheduledAt()));
+            draftDTO.setStartedAt(toUtcString(draft.getStartedAt()));
+            draftDTO.setCompletedAt(toUtcString(draft.getCompletedAt()));
             dto.setDraft(draftDTO);
         }
 
@@ -126,6 +127,10 @@ public class GroupDTO {
         }
 
         return dto;
+    }
+
+    private static String toUtcString(LocalDateTime ldt) {
+        return ldt != null ? ldt.toInstant(ZoneOffset.UTC).toString() : null;
     }
 
     public static GroupDTO fromEntity(Group group, List<PointRule> rules) {

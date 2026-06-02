@@ -347,6 +347,9 @@ public class GroupService {
             draft.setSeason(season);
             draft.setTeamSize(requestedTeamSize);
             draft.setStyle(style);
+            if (request.getDraft() != null) {
+                draft.setScheduledAt(request.getDraft().getScheduledAt());
+            }
             draftRepository.save(draft);
         });
 

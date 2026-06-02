@@ -6,6 +6,7 @@ import com.vivida.social.team.Team;
 import com.vivida.auth.User;
 
 import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -30,11 +31,11 @@ public class DraftDTO {
     public boolean isComplete;
 
     // ── Timing ────────────────────────────────────────────────────────────────
-    public LocalDateTime scheduledAt;
-    public LocalDateTime startedAt;
-    public LocalDateTime completedAt;
-    public LocalDateTime createdAt;
-    public LocalDateTime updatedAt;
+    public String scheduledAt;
+    public String startedAt;
+    public String completedAt;
+    public String createdAt;
+    public String updatedAt;
 
     // ── Set once on draft start ────────────────────────────────────────────────
     public Integer teamSize;
@@ -140,7 +141,7 @@ public class DraftDTO {
         // Filled once picked:
         public Integer castawayPerformanceId;
         public String castawayName;
-        public LocalDateTime pickedAt;
+        public String pickedAt;
 
         public PickSlotDTO(DraftPick dp) {
             this.id = dp.getId();
@@ -150,7 +151,7 @@ public class DraftDTO {
             this.user = new UserSummary(dp.getUser());
             this.team = new TeamSummary(dp.getTeam());
             this.isPicked = dp.getCastawayPerformance() != null;
-            this.pickedAt = dp.getPickedAt();
+            this.pickedAt = toUtcString(dp.getPickedAt());
             if (dp.getCastawayPerformance() != null) {
                 CastawayPerformance cp = dp.getCastawayPerformance();
                 this.castawayPerformanceId = cp.getId();
@@ -163,6 +164,10 @@ public class DraftDTO {
     // Factory
     // ═══════════════════════════════════════════════════════════════════════════
 
+    private static String toUtcString(LocalDateTime ldt) {
+        return ldt != null ? ldt.toInstant(ZoneOffset.UTC).toString() : null;
+    }
+
     public static DraftDTO from(Draft draft) {
         DraftDTO dto = new DraftDTO();
         dto.id = draft.getId();
@@ -174,11 +179,11 @@ public class DraftDTO {
         }
         dto.status = draft.getStatus();
         dto.style = draft.getStyle();
-        dto.scheduledAt = draft.getScheduledAt();
-        dto.startedAt = draft.getStartedAt();
-        dto.completedAt = draft.getCompletedAt();
-        dto.createdAt = draft.getCreatedAt();
-        dto.updatedAt = draft.getUpdatedAt();
+        dto.scheduledAt = toUtcString(draft.getScheduledAt());
+        dto.startedAt = toUtcString(draft.getStartedAt());
+        dto.completedAt = toUtcString(draft.getCompletedAt());
+        dto.createdAt = toUtcString(draft.getCreatedAt());
+        dto.updatedAt = toUtcString(draft.getUpdatedAt());
         dto.teamSize = draft.getTeamSize();
         dto.totalParticipants = draft.getTotalParticipants();
         dto.totalCastaways = draft.getTotalCastaways();
