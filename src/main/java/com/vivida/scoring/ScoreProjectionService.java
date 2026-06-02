@@ -103,7 +103,7 @@ public class ScoreProjectionService {
                 run.setCompletedAt(LocalDateTime.now());
                 calculationRunRepository.save(run);
             }
-            throw new RuntimeException("Failed to recalculate group scores: " + e.getMessage(), e);
+            System.err.println("Score calculation failed for group, continuing: " + e.getMessage());
         }
     }
 
@@ -183,9 +183,11 @@ public class ScoreProjectionService {
                 run.setErrorMessage(e.getMessage());
                 run.setCompletedAt(LocalDateTime.now());
                 calculationRunRepository.save(run);
-                System.err.println("Failed calculation run: " + run.getId() + " - " + e.getMessage());
             }
-            throw new RuntimeException("Failed to recalculate group scores: " + e.getMessage(), e);
+            // Log but do not re-throw — score calculation failure is non-fatal.
+            // Re-throwing here marks the shared transaction for rollback, which would
+            // silently cancel the episode-watched update and suppress all notifications.
+            System.err.println("Score calculation failed for group, continuing: " + e.getMessage());
         }
     }
 

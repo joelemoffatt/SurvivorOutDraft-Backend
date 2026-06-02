@@ -363,6 +363,9 @@ public class GroupService {
         });
 
         scoreProjectionService.recalculateGroupScores(updated);
+        if (latestWatchedEpisode != null) {
+            notificationService.createEpisodeScored(updated, latestWatchedEpisode);
+        }
         return updated;
     }
 

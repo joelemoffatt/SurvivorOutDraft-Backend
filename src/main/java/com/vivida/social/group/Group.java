@@ -82,6 +82,12 @@ public class Group {
     @Column(nullable = false)
     private Integer ruleVersion = 1;
 
+    @Column(name = "is_loading", nullable = false)
+    private boolean loading = false;
+
+    @Column(name = "loading_text")
+    private String loadingText;
+
     @PrePersist
     protected void onCreate() {
         createdAt = LocalDateTime.now();

@@ -11,7 +11,10 @@ import com.vivida.social.group.GroupMemberRepository;
 import com.vivida.social.group.GroupRepository;
 import com.vivida.social.group.GroupStatus;
 import com.vivida.social.group.MembershipStatus;
-import com.vivida.scoring.ScoreProjectionService;
+import com.vivida.notification.NotificationService;
+import com.vivida.scoring.AsyncScoringService;
+import com.vivida.scoring.GroupScoreCalculationRunRepository;
+import com.vivida.scoring.TeamCastawayScoreEventRepository;
 import com.vivida.social.team.Team;
 import com.vivida.social.team.TeamCastaway;
 import com.vivida.social.team.TeamCastawayRepository;
@@ -19,6 +22,8 @@ import com.vivida.social.team.TeamRepository;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.time.LocalDateTime;
@@ -45,7 +50,10 @@ public class DraftService {
     private final TeamCastawayRepository teamCastawayRepository;
     private final CastawayPerformanceRepository castawayPerformanceRepository;
     private final BootRepository bootRepository;
-    private final ScoreProjectionService scoreProjectionService;
+    private final TeamCastawayScoreEventRepository teamCastawayScoreEventRepository;
+    private final GroupScoreCalculationRunRepository groupScoreCalculationRunRepository;
+    private final NotificationService notificationService;
+    private final AsyncScoringService asyncScoringService;
 
     public DraftService(DraftRepository draftRepository,
                         DraftParticipantRepository participantRepository,
@@ -57,7 +65,10 @@ public class DraftService {
                         TeamCastawayRepository teamCastawayRepository,
                         CastawayPerformanceRepository castawayPerformanceRepository,
                         BootRepository bootRepository,
-                        ScoreProjectionService scoreProjectionService) {
+                        TeamCastawayScoreEventRepository teamCastawayScoreEventRepository,
+                        GroupScoreCalculationRunRepository groupScoreCalculationRunRepository,
+                        NotificationService notificationService,
+                        AsyncScoringService asyncScoringService) {
         this.draftRepository = draftRepository;
         this.participantRepository = participantRepository;
         this.pickRepository = pickRepository;
@@ -68,7 +79,10 @@ public class DraftService {
         this.teamCastawayRepository = teamCastawayRepository;
         this.castawayPerformanceRepository = castawayPerformanceRepository;
         this.bootRepository = bootRepository;
-        this.scoreProjectionService = scoreProjectionService;
+        this.teamCastawayScoreEventRepository = teamCastawayScoreEventRepository;
+        this.groupScoreCalculationRunRepository = groupScoreCalculationRunRepository;
+        this.notificationService = notificationService;
+        this.asyncScoringService = asyncScoringService;
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
@@ -368,6 +382,8 @@ public class DraftService {
     }
 
     private void completeDraft(Draft draft) {
+        // Clear any existing score events before deleting TeamCastaways to avoid FK violation
+        teamCastawayScoreEventRepository.deleteByGroupId(draft.getGroup().getId());
         syncDraftResultsToTeamRosters(draft);
 
         draft.setStatus(DraftStatus.COMPLETED);
@@ -376,21 +392,47 @@ public class DraftService {
 
         Group group = draft.getGroup();
         group.setStatus(GroupStatus.ACTIVE);
+        group.setLoading(true);
+        group.setLoadingText("Submitting draft picks..., Setting up Teams..., Calculating scores...");
         group.setDraft(draft);
         groupRepository.save(group);
 
-        // Draft completion is a scoring trigger: rebuild score projections immediately.
-        scoreProjectionService.recalculateGroupScores(group);
+        // Trigger score calculation after this transaction commits so the async thread
+        // sees the committed TeamCastaway rows in its own transaction.
+        final Integer groupId = group.getId();
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                asyncScoringService.recalculateGroupScoresAsync(groupId);
+            }
+        });
     }
 
-    /** Clear all picks and castaways, return to PENDING for reconfiguration. */
+    /** Clear all picks, scores, and notifications — return group and draft to post-creation state. */
     public DraftDTO resetDraft(Integer draftId, Integer requestingUserId) {
         Draft draft = loadFull(draftId);
         assertGroupAdmin(draft.getGroup(), requestingUserId);
         Group group = draft.getGroup();
+        Integer groupId = group.getId();
 
-        teamCastawayRepository.deleteByTeamGroupId(group.getId());
+        // 1. Delete score events first (FK references TeamCastaways)
+        teamCastawayScoreEventRepository.deleteByGroupId(groupId);
 
+        // 2. Delete calculation runs
+        groupScoreCalculationRunRepository.deleteByGroupId(groupId);
+
+        // 3. Delete episode-scored notifications
+        notificationService.deleteAllForGroup(groupId);
+
+        // 4. Delete team rosters and reset team points
+        teamCastawayRepository.deleteByTeamGroupId(groupId);
+        List<Team> teams = teamRepository.findByGroupId(groupId);
+        for (Team team : teams) {
+            team.setTotalPoints(0);
+            teamRepository.save(team);
+        }
+
+        // 5. Reset draft back to PENDING
         draft.getPicks().clear();
         draft.getParticipants().clear();
         draft.getDraftCastaways().clear();
@@ -405,6 +447,7 @@ public class DraftService {
         draft.setTotalCastaways(0);
         draft.setTotalPicks(0);
 
+        // 6. Reset group status to PENDING
         group.setStatus(GroupStatus.PENDING);
         group.setDraft(draft);
 

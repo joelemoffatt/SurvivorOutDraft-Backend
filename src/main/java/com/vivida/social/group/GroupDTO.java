@@ -30,6 +30,8 @@ public class GroupDTO {
     private GroupStatus status;
     private String createdAt;
     private List<PointRuleDTO> pointRules;
+    private boolean loading;
+    private String loadingText;
 
     @Getter
     @Setter
@@ -96,6 +98,8 @@ public class GroupDTO {
             dto.setLatestEpisodeWatched(epDTO);
         }
         dto.setStatus(group.getStatus());
+        dto.setLoading(group.isLoading());
+        dto.setLoadingText(group.getLoadingText());
         dto.setCreatedAt(toUtcString(group.getCreatedAt()));
 
         Draft draft = group.getDraft();

@@ -65,9 +65,7 @@ public class NotificationService {
         List<GroupMember> members = groupMemberRepository.findByGroupIdAndStatus(
                 group.getId(), MembershipStatus.ACCEPTED);
 
-        Integer adminId = group.getAdmin().getId();
         List<Notification> notifications = members.stream()
-                .filter(m -> !m.getUser().getId().equals(adminId))
                 .map(m -> {
                     Notification n = new Notification();
                     n.setRecipient(m.getUser());
