@@ -89,13 +89,13 @@ public class DraftDTO {
     public static class DraftCastawayDTO {
         public Integer draftId;
         public Integer castawayPerformanceId;
+        public Integer castawayId;
         public String castawayName;
-
-        // We could include more castaway details here if needed, but for now just the name is enough.
 
         public DraftCastawayDTO(Integer draftId, CastawayPerformance cp) {
             this.draftId = draftId;
             this.castawayPerformanceId = cp.getId();
+            this.castawayId = cp.getCastaway().getId();
             this.castawayName = cp.getCastaway().getName();
         }
     }
@@ -140,6 +140,7 @@ public class DraftDTO {
 
         // Filled once picked:
         public Integer castawayPerformanceId;
+        public Integer castawayId;
         public String castawayName;
         public String pickedAt;
 
@@ -155,6 +156,7 @@ public class DraftDTO {
             if (dp.getCastawayPerformance() != null) {
                 CastawayPerformance cp = dp.getCastawayPerformance();
                 this.castawayPerformanceId = cp.getId();
+                this.castawayId = cp.getCastaway().getId();
                 this.castawayName = cp.getCastaway().getName();
             }
         }
